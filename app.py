@@ -190,14 +190,7 @@ def get_work_link(work):
 
 query = st.text_input(
     "Enter keywords or a research topic",
-    placeholder="e.g. Turkish ideophones negation"
-)
-
-max_results = st.slider(
-    "Number of OpenAlex results",
-    min_value=5,
-    max_value=20,
-    value=10
+    placeholder="e.g. Turkish ideophones under negation"
 )
 
 
