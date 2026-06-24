@@ -190,7 +190,7 @@ def get_work_link(work):
 
 query = st.text_input(
     "Enter keywords or a research topic",
-    placeholder="e.g. Turkish ideophones under negation"
+    placeholder="e.g. Turkish ideophones negation"
 )
 
 
@@ -226,7 +226,7 @@ if st.button("Search") and query:
                 min-height: 145px;
             ">
                 <h4>OpenAlex</h4>
-                <p>Ranked results are shown below.</p>
+                <p>Top 10 ranked results are shown below.</p>
             </div>
             """,
             unsafe_allow_html=True
@@ -291,7 +291,7 @@ if st.button("Search") and query:
 
     with st.spinner("Searching OpenAlex..."):
         try:
-            works = search_openalex_relevant(query, max_results=max_results)
+            works = search_openalex_relevant(query, max_results=10)
         except Exception as error:
             st.error(f"OpenAlex search failed: {error}")
             st.stop()
@@ -304,7 +304,7 @@ if st.button("Search") and query:
         )
         st.stop()
 
-    st.markdown("### OpenAlex ranked results")
+    st.markdown("### Top 10 OpenAlex ranked results")
 
     for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
