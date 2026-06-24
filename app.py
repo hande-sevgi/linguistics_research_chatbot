@@ -1,4 +1,4 @@
- import re
+import re
 from urllib.parse import quote_plus
 
 import requests
