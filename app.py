@@ -61,14 +61,14 @@ LINGUISTICS_SIGNAL_TERMS = {
 EXCLUDED_NON_LINGUISTIC_TERMS = {
     "biology", "biological", "cell", "cells", "cellular", "molecular",
     "genetics", "genome", "protein", "proteins", "plant", "plants",
-    "animal", "animals", "species", "evolution", "ecology", "medical",
-    "medicine", "clinical", "anatomy", "physiology", "disease",
-    "patient", "patients", "neuron", "neural", "brain", "cancer",
-    "tumor", "bacteria", "microbial", "material", "materials",
-    "crystal", "crystals", "polymer", "surface", "nanoparticle",
-    "nanoparticles", "soil", "leaf", "leaves", "root", "roots",
-    "stem", "stems", "organism", "organisms", "tissue", "tissues",
-    "specimen", "specimens", "embryo", "embryonic"
+    "animal", "animals", "species", "medical", "medicine", "clinical",
+    "anatomy", "physiology", "disease", "patient", "patients",
+    "neuron", "neural", "brain", "cancer", "tumor", "bacteria",
+    "microbial", "material", "materials", "crystal", "crystals",
+    "polymer", "surface", "nanoparticle", "nanoparticles", "soil",
+    "leaf", "leaves", "root", "roots", "stem", "stems", "organism",
+    "organisms", "tissue", "tissues", "specimen", "specimens",
+    "embryo", "embryonic"
 }
 
 
@@ -278,37 +278,11 @@ def is_excluded_non_linguistic_work(work):
     Return True if the work looks like biology, medicine, materials science,
     or another non-linguistic domain.
 
-    This is especially useful for ambiguous terms like morphology.
+    This is intentionally used softly, not as an absolute block in every case.
     """
     searchable_text = get_work_searchable_text(work)
 
     return any(term in searchable_text for term in EXCLUDED_NON_LINGUISTIC_TERMS)
-
-
-def is_linguistics_work(work):
-    """
-    Keep works that have a linguistics/language signal and do not look
-    strongly non-linguistic.
-    """
-    return has_linguistics_signal(work) and not is_excluded_non_linguistic_work(work)
-
-
-def contains_required_abstract_terms(work, content_terms, min_matches=2):
-    """
-    Return True if the abstract contains enough of the user's content terms.
-
-    If the query has only one content term, one match is enough.
-    If the query has two or more content terms, at least two must appear
-    in the abstract.
-    """
-    abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
-
-    if not abstract:
-        return False
-
-    required_matches = min(min_matches, len(content_terms))
-
-    return count_content_term_matches(abstract, content_terms) >= required_matches
 
 
 def relevance_score(work, content_terms, inferred_phrases):
@@ -319,6 +293,7 @@ def relevance_score(work, content_terms, inferred_phrases):
     Abstract matches matter strongly.
     Inferred phrase matches help.
     OpenAlex topic/concept matches help.
+    Linguistics signals help.
     Citation count is only a small bonus.
     """
     title = normalize_text(work.get("title") or "")
@@ -348,13 +323,20 @@ def relevance_score(work, content_terms, inferred_phrases):
     title_matches = count_content_term_matches(title, content_terms)
 
     if abstract_matches >= 2:
-        score += 6
+        score += 8
+    elif abstract_matches == 1:
+        score += 3
 
     if title_matches >= 2:
-        score += 6
+        score += 8
+    elif title_matches == 1:
+        score += 3
 
-    if is_linguistics_work(work):
-        score += 5
+    if has_linguistics_signal(work):
+        score += 8
+
+    if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
+        score -= 12
 
     cited_by = work.get("cited_by_count", 0) or 0
     score += min(cited_by / 100, 3)
@@ -362,32 +344,21 @@ def relevance_score(work, content_terms, inferred_phrases):
     return score
 
 
-def build_openalex_search_query(query):
-    """
-    Add linguistics bias to the OpenAlex search.
-
-    This helps prevent ambiguous searches such as 'morphology'
-    from drifting into biology.
-    """
-    content_terms = extract_content_terms(query)
-    base_query = " ".join(content_terms)
-
-    return f"{base_query} linguistics language".strip()
-
-
 def search_openalex_relevant(query, max_results=10):
     """
-    Search OpenAlex, keep only linguistics-related works whose abstracts
-    contain enough of the user's content terms, then rerank them.
+    Search OpenAlex broadly, then rank results by linguistic relevance
+    and topic relevance.
+
+    This avoids accidentally hiding good results when OpenAlex metadata
+    or abstracts are incomplete.
     """
     url = "https://api.openalex.org/works"
 
     content_terms = extract_content_terms(query)
     inferred_phrases = infer_query_phrases(query)
-    openalex_query = build_openalex_search_query(query)
 
     params = {
-        "search": openalex_query,
+        "search": query,
         "per-page": 100,
         "sort": "relevance_score:desc",
         "mailto": "handesevgi@g.harvard.edu"
@@ -402,19 +373,15 @@ def search_openalex_relevant(query, max_results=10):
     scored_works = []
 
     for work in works:
-        if (
-            is_linguistics_work(work)
-            and contains_required_abstract_terms(
-                work,
-                content_terms,
-                min_matches=2
-            )
-        ):
-            score = relevance_score(
-                work,
-                content_terms,
-                inferred_phrases
-            )
+        score = relevance_score(work, content_terms, inferred_phrases)
+
+        # Only remove works that are very clearly outside linguistics
+        # and have no language/linguistics signal at all.
+        if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
+            continue
+
+        # Keep results with some connection to the query or linguistics.
+        if score > 0:
             work["custom_relevance_score"] = score
             scored_works.append(work)
 
@@ -541,7 +508,7 @@ if st.button("Search") and query:
                 min-height: 165px;
             ">
                 <h4>OpenAlex</h4>
-                <p>Linguistics-filtered ranked results are shown below.</p>
+                <p>Ranked results are shown below.</p>
             </div>
             """,
             unsafe_allow_html=True
@@ -608,14 +575,12 @@ if st.button("Search") and query:
 
     if not works:
         st.warning(
-            "No linguistics-related OpenAlex works found whose abstract contains "
-            "enough of the content terms. Try adding a language, a construction, "
-            "a phenomenon, or a theoretical domain, such as 'Turkish morphology', "
-            "'ideophones under negation', or 'clitics in syntax'."
+            "No OpenAlex results were found. Try a slightly broader query, such as "
+            "'Turkish morphology', 'ideophones negation', or 'clitics syntax'."
         )
         st.stop()
 
-    st.markdown("### Top 10 linguistics-related OpenAlex results")
+    st.markdown("### Top 10 OpenAlex results")
 
     for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
