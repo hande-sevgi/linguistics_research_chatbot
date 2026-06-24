@@ -6,13 +6,13 @@ from openai import OpenAI
 # Page setup
 # -----------------------------
 st.set_page_config(
-    page_title="AI Advising Chatbot",
+    page_title="Linguistics Research Assistant",
     page_icon="💬",
     layout="centered"
 )
 
-st.title("AI Advising Chatbot")
-st.caption("A small LLM-powered chatbot built with Streamlit and the OpenAI API.")
+st.title("Linguistics Research Assistant")
+st.caption("Enter keywords or a topic to get a curated list of relevant linguistic works.")
 
 # -----------------------------
 # API key setup
@@ -35,22 +35,23 @@ client = OpenAI(api_key=api_key)
 # System prompt
 # -----------------------------
 SYSTEM_PROMPT = """
-You are an advising-support chatbot.
+You are a linguistics research assistant chatbot.
 
-Your job is to help users think through advising-related questions clearly and supportively.
-You can help with:
-- course selection
-- deadlines
-- research opportunities
-- advising appointments
-- general academic planning
+Given user-provided keywords, topics, or research questions, generate a list of 10 relevant academic works in linguistics.
 
-Important rules:
-- Do not invent specific university policies.
-- If the user asks about a policy, deadline, requirement, or sensitive issue, recommend checking with the relevant office or advisor.
-- Ask clarifying questions when the user's request is ambiguous.
-- Keep responses concise, warm, and useful.
-- Give concrete next steps when possible.
+For each work, provide:
+- Citation: Author(s), year, title
+- Area: relevant subfield
+- Relevance: one sentence explaining why the work is useful for the query
+- Confidence: high / medium / low
+
+Important:
+- Do not fabricate references.
+- If you are unsure about bibliographic details, mark confidence as low and say the details should be verified.
+- If fewer than 10 reliable works come to mind, provide fewer than 10 and explain why.
+- If the query is too broad, ask one clarifying question before listing works.
+- Prefer foundational works plus a few more recent works when possible.
+- Keep the response readable and concise.
 """
 
 # -----------------------------
@@ -73,7 +74,7 @@ for message in st.session_state.messages:
 # -----------------------------
 # Chat input
 # -----------------------------
-user_input = st.chat_input("Ask me an advising question...")
+user_input = st.chat_input("Enter keywords or a linguistics research topic...")
 
 if user_input:
     # Add user message to memory
