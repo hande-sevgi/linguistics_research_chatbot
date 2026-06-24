@@ -838,4 +838,4 @@ if st.button("Search") and query:
                 with st.expander("Abstract"):
                     st.write(abstract)
 
-            st.divider() on
+            st.divider()
