@@ -8,8 +8,15 @@ st.set_page_config(
     layout="centered"
 )
 
+from urllib.parse import quote_plus
+
+def lingbuzz_search_url(query):
+    return f"https://lingbuzz.net/lingbuzz/search?q={quote_plus(query)}"
+    
 st.title("Linguistics Research Assistant")
 st.caption("Search open scholarly metadata from OpenAlex for linguistics-related works.")
+st.markdown("### Additional sources")
+st.markdown(f"[Search LingBuzz for this topic]({lingbuzz_search_url(query)})")
 
 def reconstruct_abstract(inverted_index):
     if not inverted_index:
@@ -150,7 +157,7 @@ def search_openalex_relevant(query, max_results=10):
 
     return scored_works[:max_results]
     
-query = st.text_input("Enter keywords, e.g. Turkish ideophones negation")
+query = st.text_input("Enter keywords, e.g. Turkish ideophones under negation")
 
 if st.button("Search") and query:
     with st.spinner("Searching OpenAlex..."):
