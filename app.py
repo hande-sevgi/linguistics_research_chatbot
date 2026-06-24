@@ -1,27 +1,16 @@
 import os
+import requests
 import streamlit as st
 from openai import OpenAI
 
-# -----------------------------
-# Page setup
-# -----------------------------
 st.set_page_config(
     page_title="Linguistics Research Assistant",
-    page_icon="💬",
+    page_icon="📚",
     layout="centered"
 )
 
 st.title("Linguistics Research Assistant")
-st.caption("Enter keywords or a topic to get a curated list of relevant linguistic works.")
-
-# -----------------------------
-# API key setup
-# -----------------------------
-# For local use:
-# export OPENAI_API_KEY="your_key_here"
-#
-# For Streamlit Cloud:
-# add OPENAI_API_KEY to Secrets.
+st.caption("Enter keywords or a research topic to find relevant open scholarly works.")
 
 api_key = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
 
@@ -31,87 +20,160 @@ if not api_key:
 
 client = OpenAI(api_key=api_key)
 
-# -----------------------------
-# System prompt
-# -----------------------------
+
+def search_openalex(query, max_results=25):
+    """
+    Search OpenAlex works endpoint for papers matching a query.
+    Returns simplified metadata for ranking/summarization.
+    """
+    url = "https://api.openalex.org/works"
+
+    params = {
+        "search": query,
+        "per-page": max_results,
+        "sort": "cited_by_count:desc",
+        "mailto": "handesevgi@g.harvard.edu"
+    }
+
+    response = requests.get(url, params=params, timeout=20)
+    response.raise_for_status()
+
+    data = response.json()
+    works = data.get("results", [])
+
+    simplified = []
+
+    for work in works:
+        title = work.get("title") or "Untitled"
+
+        year = work.get("publication_year")
+        cited_by = work.get("cited_by_count", 0)
+
+        authorships = work.get("authorships", [])
+        authors = []
+        for authorship in authorships[:4]:
+            author = authorship.get("author", {})
+            name = author.get("display_name")
+            if name:
+                authors.append(name)
+
+        if len(authorships) > 4:
+            authors.append("et al.")
+
+        doi = work.get("doi")
+        openalex_url = work.get("id")
+        primary_location = work.get("primary_location") or {}
+        landing_page_url = primary_location.get("landing_page_url")
+
+        abstract_inverted = work.get("abstract_inverted_index")
+        abstract = reconstruct_abstract(abstract_inverted)
+
+        simplified.append({
+            "title": title,
+            "year": year,
+            "authors": ", ".join(authors) if authors else "Unknown authors",
+            "cited_by_count": cited_by,
+            "doi": doi,
+            "url": doi or landing_page_url or openalex_url,
+            "abstract": abstract
+        })
+
+    return simplified
+
+
+def reconstruct_abstract(inverted_index):
+    """
+    OpenAlex stores abstracts as an inverted index.
+    This reconstructs the abstract into readable text.
+    """
+    if not inverted_index:
+        return ""
+
+    words = []
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            words.append((pos, word))
+
+    words_sorted = sorted(words, key=lambda x: x[0])
+    return " ".join(word for _, word in words_sorted)
+
+
+def format_works_for_llm(works):
+    formatted = []
+
+    for i, work in enumerate(works, start=1):
+        formatted.append(
+            f"""
+Paper {i}
+Title: {work['title']}
+Authors: {work['authors']}
+Year: {work['year']}
+Citations: {work['cited_by_count']}
+URL: {work['url']}
+Abstract: {work['abstract'][:1200]}
+"""
+        )
+
+    return "\n".join(formatted)
+
+
 SYSTEM_PROMPT = """
-You are a linguistics research assistant chatbot.
+You are a linguistics research assistant.
 
-Given user-provided keywords, topics, or research questions, generate a list of 10 relevant academic works in linguistics.
+The user will give keywords, a topic, or a research question.
+You will receive search results from OpenAlex.
 
-For each work, provide:
-- Citation: Author(s), year, title
-- Area: relevant subfield
-- Relevance: one sentence explaining why the work is useful for the query
-- Confidence: high / medium / low
-
-Important:
-- Do not fabricate references.
-- If you are unsure about bibliographic details, mark confidence as low and say the details should be verified.
-- If fewer than 10 reliable works come to mind, provide fewer than 10 and explain why.
-- If the query is too broad, ask one clarifying question before listing works.
-- Prefer foundational works plus a few more recent works when possible.
-- Keep the response readable and concise.
+Your task:
+1. Select the 10 most relevant works from the search results.
+2. Prioritize works that are relevant to linguistics, language, meaning, syntax, semantics, pragmatics, morphology, sign language, gesture, psycholinguistics, sociolinguistics, or NLP, depending on the user's query.
+3. For each work, provide:
+   - citation-style line: Author(s), year, title
+   - one-sentence explanation of relevance
+   - link if available
+4. Do not invent works.
+5. If the search results are weak, say that the list should be treated as a starting point.
+6. Keep the response clear and concise.
 """
 
-# -----------------------------
-# Conversation memory
-# -----------------------------
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": SYSTEM_PROMPT}
-    ]
 
-# Display previous messages, except system prompt
-for message in st.session_state.messages:
-    if message["role"] == "user":
-        with st.chat_message("user"):
-            st.markdown(message["content"])
-    elif message["role"] == "assistant":
-        with st.chat_message("assistant"):
-            st.markdown(message["content"])
+query = st.chat_input("Enter keywords, e.g. ideophones negation Turkish")
 
-# -----------------------------
-# Chat input
-# -----------------------------
-user_input = st.chat_input("Enter keywords or a linguistics research topic...")
+if query:
+    st.markdown(f"**Search query:** {query}")
 
-if user_input:
-    # Add user message to memory
-    st.session_state.messages.append(
-        {"role": "user", "content": user_input}
-    )
+    with st.spinner("Searching OpenAlex..."):
+        try:
+            works = search_openalex(query, max_results=30)
+        except Exception as e:
+            st.error(f"OpenAlex search failed: {e}")
+            st.stop()
 
-    with st.chat_message("user"):
-        st.markdown(user_input)
+    if not works:
+        st.warning("No works found. Try different keywords.")
+        st.stop()
 
-    # Build the input for the model
-    conversation_text = ""
-    for msg in st.session_state.messages:
-        role = msg["role"]
-        content = msg["content"]
-        conversation_text += f"{role.upper()}: {content}\n\n"
+    works_text = format_works_for_llm(works)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = client.responses.create(
-                model="gpt-5.5-mini",
-                input=conversation_text
-            )
+    user_prompt = f"""
+User query: {query}
 
-            assistant_reply = response.output_text
-            st.markdown(assistant_reply)
+OpenAlex search results:
+{works_text}
 
-    # Save assistant response
-    st.session_state.messages.append(
-        {"role": "assistant", "content": assistant_reply}
-    )
+Please return the 10 most relevant works for this query.
+"""
 
-# -----------------------------
-# Reset button
-# -----------------------------
-if st.button("Reset conversation"):
-    st.session_state.messages = [
-        {"role": "system", "content": SYSTEM_PROMPT}
-    ]
-    st.rerun()
+    with st.spinner("Ranking and summarizing works..."):
+        response = client.responses.create(
+            model="gpt-5.5-mini",
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+    st.markdown(response.output_text)
+
+    with st.expander("View raw OpenAlex results"):
+        for work in works:
+            st.write(work)
