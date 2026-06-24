@@ -41,6 +41,15 @@ STOPWORDS = {
     "that", "these", "those"
 }
 
+LANGUAGE_OR_REGION_TERMS = {
+    "turkish", "english", "german", "french", "spanish", "italian",
+    "arabic", "japanese", "korean", "chinese", "russian", "greek",
+    "hebrew", "hindi", "persian", "swahili", "yoruba", "zulu",
+    "african", "european", "asian", "austronesian", "bantu",
+    "indo-european", "romance", "slavic", "semitic", "turkic",
+    "native", "indigenous", "languages", "language"
+}
+
 LINGUISTICS_SIGNAL_TERMS = {
     "linguistic", "linguistics", "language", "languages", "grammar",
     "syntax", "syntactic", "semantics", "semantic", "pragmatics",
@@ -140,27 +149,86 @@ def extract_content_terms(query):
     return content_terms
 
 
+def extract_context_terms(query):
+    """
+    Extract language/region/domain terms that function as context,
+    not as the main research topic.
+
+    Example:
+    Turkish ideophones under negation
+    -> context: Turkish
+
+    ideophones in African languages
+    -> context: African, languages
+    """
+    content_terms = extract_content_terms(query)
+
+    context_terms = [
+        term for term in content_terms
+        if term in LANGUAGE_OR_REGION_TERMS
+    ]
+
+    return context_terms
+
+
+def extract_core_terms(query):
+    """
+    Extract the main research terms, excluding language/region context.
+
+    Example:
+    Turkish ideophones under negation
+    -> core: ideophones, negation
+
+    ideophones in African languages
+    -> core: ideophones
+    """
+    content_terms = extract_content_terms(query)
+    context_terms = set(extract_context_terms(query))
+
+    core_terms = [
+        term for term in content_terms
+        if term not in context_terms
+    ]
+
+    return core_terms
+
+
 def infer_query_phrases(query):
     """
     Infer phrase-like units without requiring punctuation.
 
+    Core terms are prioritized over context terms.
+
     Example:
     Turkish ideophones under negation
-    -> Turkish ideophones
     -> ideophones negation
-    -> Turkish ideophones negation
+    -> Turkish ideophones
+
+    ideophones in African languages
+    -> ideophones African
+    -> African languages
     """
     content_terms = extract_content_terms(query)
+    core_terms = extract_core_terms(query)
+    context_terms = extract_context_terms(query)
 
     phrases = []
 
-    for i in range(len(content_terms) - 1):
-        phrases.append(f"{content_terms[i]} {content_terms[i + 1]}")
+    # Highest priority: core-term combinations
+    for i in range(len(core_terms) - 1):
+        phrases.append(f"{core_terms[i]} {core_terms[i + 1]}")
 
-    for i in range(len(content_terms) - 2):
-        phrases.append(
-            f"{content_terms[i]} {content_terms[i + 1]} {content_terms[i + 2]}"
-        )
+    # Secondary priority: context + core combinations
+    for context in context_terms:
+        for core in core_terms:
+            phrases.append(f"{context} {core}")
+            phrases.append(f"{core} {context}")
+
+    # Lowest priority: adjacent content combinations
+    for i in range(len(content_terms) - 1):
+        phrase = f"{content_terms[i]} {content_terms[i + 1]}"
+        if phrase not in phrases:
+            phrases.append(phrase)
 
     return phrases
 
@@ -285,15 +353,12 @@ def is_excluded_non_linguistic_work(work):
     return any(term in searchable_text for term in EXCLUDED_NON_LINGUISTIC_TERMS)
 
 
-def relevance_score(work, content_terms, inferred_phrases):
+def relevance_score(work, content_terms, inferred_phrases, core_terms=None, context_terms=None):
     """
     Score how central the user's topic is to the work.
 
-    Title matches matter most.
-    Abstract matches matter strongly.
-    Inferred phrase matches help.
-    OpenAlex topic/concept matches help.
-    Linguistics signals help.
+    Core research terms matter most.
+    Context terms such as language names or regions matter second.
     Citation count is only a small bonus.
     """
     title = normalize_text(work.get("title") or "")
@@ -303,34 +368,56 @@ def relevance_score(work, content_terms, inferred_phrases):
     topic_text = get_openalex_topic_text(work)
     concept_text = get_concept_text(work)
 
+    core_terms = core_terms or content_terms
+    context_terms = context_terms or []
+
     score = 0
 
-    for term in content_terms:
+    # Core topic terms: highest priority
+    for term in core_terms:
         if unit_in_text(term, title):
-            score += 6
+            score += 10
         if unit_in_text(term, abstract):
-            score += 4
+            score += 7
         if unit_in_text(term, topic_text):
-            score += 3
+            score += 4
         if unit_in_text(term, concept_text):
+            score += 3
+
+    # Context terms: useful, but not the main topic
+    for term in context_terms:
+        if unit_in_text(term, title):
+            score += 4
+        if unit_in_text(term, abstract):
+            score += 3
+        if unit_in_text(term, topic_text):
             score += 2
+        if unit_in_text(term, concept_text):
+            score += 1
 
     phrase_text = " ".join([title, abstract, topic_text, concept_text])
     phrase_matches = count_phrase_matches(phrase_text, inferred_phrases)
     score += phrase_matches * 5
 
-    abstract_matches = count_content_term_matches(abstract, content_terms)
-    title_matches = count_content_term_matches(title, content_terms)
+    core_abstract_matches = count_content_term_matches(abstract, core_terms)
+    core_title_matches = count_content_term_matches(title, core_terms)
 
-    if abstract_matches >= 2:
-        score += 8
-    elif abstract_matches == 1:
-        score += 3
+    if core_abstract_matches >= 2:
+        score += 12
+    elif core_abstract_matches == 1:
+        score += 5
 
-    if title_matches >= 2:
-        score += 8
-    elif title_matches == 1:
-        score += 3
+    if core_title_matches >= 2:
+        score += 12
+    elif core_title_matches == 1:
+        score += 5
+
+    # Penalize results that only match the context but not the core topic.
+    full_text = " ".join([title, abstract, topic_text, concept_text])
+    core_matches = count_content_term_matches(full_text, core_terms)
+
+    if core_terms and core_matches == 0:
+        score -= 25
 
     if has_linguistics_signal(work):
         score += 8
@@ -346,15 +433,17 @@ def relevance_score(work, content_terms, inferred_phrases):
 
 def search_openalex_relevant(query, max_results=25):
     """
-    Search OpenAlex broadly, then rank results by linguistic relevance
-    and topic relevance.
+    Search OpenAlex broadly, then rank results by linguistic relevance,
+    core-topic relevance, and context relevance.
 
-    This avoids accidentally hiding good results when OpenAlex metadata
-    or abstracts are incomplete.
+    This avoids hiding good results when OpenAlex metadata or abstracts
+    are incomplete, while still keeping the user's main phenomenon central.
     """
     url = "https://api.openalex.org/works"
 
     content_terms = extract_content_terms(query)
+    core_terms = extract_core_terms(query)
+    context_terms = extract_context_terms(query)
     inferred_phrases = infer_query_phrases(query)
 
     params = {
@@ -373,9 +462,15 @@ def search_openalex_relevant(query, max_results=25):
     scored_works = []
 
     for work in works:
-        score = relevance_score(work, content_terms, inferred_phrases)
+        score = relevance_score(
+            work,
+            content_terms,
+            inferred_phrases,
+            core_terms=core_terms,
+            context_terms=context_terms
+        )
 
-        # Only remove works that are very clearly outside linguistics
+        # Remove only works that are very clearly outside linguistics
         # and have no language/linguistics signal at all.
         if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
             continue
