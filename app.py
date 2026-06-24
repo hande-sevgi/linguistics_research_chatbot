@@ -10,12 +10,12 @@ import streamlit as st
 # -----------------------------
 
 st.set_page_config(
-    page_title="Linguistics Research Assistant",
+    page_title="What have others found before me?",
     page_icon="📚",
     layout="wide"
 )
 
-st.title("Linguistics Research Assistant")
+st.title("What have others found before me?")
 st.caption(
     "Search open scholarly metadata from OpenAlex and continue the same search "
     "in LingBuzz and Google Scholar."
