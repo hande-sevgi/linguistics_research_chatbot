@@ -17,8 +17,8 @@ st.set_page_config(
 
 st.title("Linguistics Research Assistant")
 st.caption(
-    "Search open scholarly metadata from OpenAlex. Results are filtered so that all "
-    "user-provided keywords appear in the title, abstract, or OpenAlex concepts."
+    "Search open scholarly metadata from OpenAlex and continue the same search "
+    "in LingBuzz and Google Scholar."
 )
 
 
@@ -202,17 +202,44 @@ max_results = st.slider(
 
 
 # -----------------------------
-# Sidebar source box
+# Main search
 # -----------------------------
 
-with st.sidebar:
-    st.markdown("## Search elsewhere")
+if st.button("Search") and query:
+    query_terms = tokenize_query(query)
 
-    if query:
-        st.info(
-            "Use these links to search linguistics-specific and broader scholarly sources."
+    if not query_terms:
+        st.warning("Please enter more specific keywords.")
+        st.stop()
+
+    st.markdown("## Results")
+
+    # -----------------------------
+    # Source cards
+    # -----------------------------
+
+    st.markdown("### Search across sources")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown(
+            """
+            <div style="
+                border: 1px solid #ddd;
+                border-radius: 12px;
+                padding: 1rem;
+                background-color: #f8f9fa;
+                min-height: 145px;
+            ">
+                <h4>OpenAlex</h4>
+                <p>Ranked results are shown below.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
+    with col2:
         st.markdown(
             f"""
             <div style="
@@ -220,49 +247,54 @@ with st.sidebar:
                 border-radius: 12px;
                 padding: 1rem;
                 background-color: #f8f9fa;
+                min-height: 145px;
             ">
-                <p style="margin-bottom: 0.7rem;">
-                    <strong>External searches for:</strong><br>
-                    <em>{query}</em>
-                </p>
-                <p>
-                    <a href="{lingbuzz_search_url(query)}" target="_blank">
-                        Search LingBuzz
-                    </a>
-                </p>
-                <p>
-                    <a href="{google_scholar_search_url(query)}" target="_blank">
-                        Search Google Scholar
-                    </a>
-                </p>
+                <h4>LingBuzz</h4>
+                <p>Linguistics preprints and working papers.</p>
+                <a href="{lingbuzz_search_url(query)}" target="_blank">
+                    Search LingBuzz
+                </a>
             </div>
             """,
             unsafe_allow_html=True
         )
-    else:
-        st.info(
-            "Enter keywords in the main search box to generate LingBuzz and "
-            "Google Scholar links."
+
+    with col3:
+        st.markdown(
+            f"""
+            <div style="
+                border: 1px solid #ddd;
+                border-radius: 12px;
+                padding: 1rem;
+                background-color: #f8f9fa;
+                min-height: 145px;
+            ">
+                <h4>Google Scholar</h4>
+                <p>Broader scholarly search across books, articles, and citations.</p>
+                <a href="{google_scholar_search_url(query)}" target="_blank">
+                    Search Google Scholar
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
+    st.markdown("---")
 
-# -----------------------------
-# Main search
-# -----------------------------
-
-if st.button("Search OpenAlex") and query:
-    query_terms = tokenize_query(query)
-
-    if not query_terms:
-        st.warning("Please enter more specific keywords.")
-        st.stop()
+    # -----------------------------
+    # Keyword constraint
+    # -----------------------------
 
     st.markdown("### Keyword constraint")
     st.write(
-        "The app will only return works where all of these keywords appear "
-        "in the title, abstract, or OpenAlex concepts:"
+        "OpenAlex results below include all of these keywords in the title, "
+        "abstract, or OpenAlex concepts:"
     )
     st.code(", ".join(query_terms))
+
+    # -----------------------------
+    # OpenAlex results
+    # -----------------------------
 
     with st.spinner("Searching OpenAlex..."):
         try:
@@ -273,12 +305,13 @@ if st.button("Search OpenAlex") and query:
 
     if not works:
         st.warning(
-            "No works found that include all keywords. Try fewer keywords, "
-            "broader terms, or singular/plural variants."
+            "No OpenAlex works found that include all keywords. Try fewer keywords, "
+            "broader terms, or singular/plural variants. You can still use the LingBuzz "
+            "and Google Scholar links above."
         )
         st.stop()
 
-    st.subheader(f"Top OpenAlex results for: {query}")
+    st.markdown("### OpenAlex ranked results")
 
     for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
@@ -290,7 +323,7 @@ if st.button("Search OpenAlex") and query:
         abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
 
         with st.container():
-            st.markdown(f"### {index}. {title}")
+            st.markdown(f"#### {index}. {title}")
             st.markdown(f"**Authors:** {author_text}")
             st.markdown(
                 f"**Year:** {year} | **Cited by:** {cited_by} | "
