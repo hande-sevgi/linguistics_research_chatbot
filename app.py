@@ -12,13 +12,13 @@ import streamlit as st
 st.set_page_config(
     page_title="Linguistics Research Assistant",
     page_icon="📚",
-    layout="centered"
+    layout="wide"
 )
 
 st.title("Linguistics Research Assistant")
 st.caption(
-    "Search open scholarly metadata from OpenAlex and rank works by how centrally "
-    "your keywords appear in the title, abstract, and concepts."
+    "Search open scholarly metadata from OpenAlex. Results are filtered so that all "
+    "user-provided keywords appear in the title, abstract, or OpenAlex concepts."
 )
 
 
@@ -41,7 +41,7 @@ def reconstruct_abstract(inverted_index):
 
 
 def tokenize_query(query):
-    """Split the user's query into meaningful search terms."""
+    """Split the user's query into meaningful searchable terms."""
     stopwords = {
         "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
         "with", "by", "from", "about", "into", "across", "under"
@@ -51,6 +51,24 @@ def tokenize_query(query):
     terms = [term for term in terms if len(term) > 2 and term not in stopwords]
 
     return terms
+
+
+def contains_all_keywords(work, query_terms):
+    """
+    Return True only if every query term appears in the title,
+    abstract, or OpenAlex concept metadata.
+    """
+    title = (work.get("title") or "").lower()
+    abstract = reconstruct_abstract(work.get("abstract_inverted_index")).lower()
+
+    concepts = work.get("concepts") or []
+    concept_text = " ".join(
+        concept.get("display_name", "") for concept in concepts
+    ).lower()
+
+    searchable_text = f"{title} {abstract} {concept_text}"
+
+    return all(term in searchable_text for term in query_terms)
 
 
 def relevance_score(work, query_terms):
@@ -91,12 +109,15 @@ def relevance_score(work, query_terms):
 
 
 def search_openalex_relevant(query, max_results=10):
-    """Search OpenAlex broadly, then rerank by custom thematic relevance."""
+    """
+    Search OpenAlex, keep only works containing all keywords,
+    then rerank by custom relevance score.
+    """
     url = "https://api.openalex.org/works"
 
     params = {
         "search": query,
-        "per-page": 50,
+        "per-page": 100,
         "sort": "relevance_score:desc",
         "mailto": "handesevgi@g.harvard.edu"
     }
@@ -111,10 +132,9 @@ def search_openalex_relevant(query, max_results=10):
 
     scored_works = []
     for work in works:
-        score = relevance_score(work, query_terms)
-        work["custom_relevance_score"] = score
-
-        if score > 0:
+        if contains_all_keywords(work, query_terms):
+            score = relevance_score(work, query_terms)
+            work["custom_relevance_score"] = score
             scored_works.append(work)
 
     scored_works = sorted(
@@ -174,16 +194,75 @@ query = st.text_input(
 )
 
 max_results = st.slider(
-    "Number of results",
+    "Number of OpenAlex results",
     min_value=5,
     max_value=20,
     value=10
 )
 
-if st.button("Search") and query:
-    st.markdown("### Search this topic elsewhere")
-    st.markdown(f"- [LingBuzz]({lingbuzz_search_url(query)})")
-    st.markdown(f"- [Google Scholar]({google_scholar_search_url(query)})")
+
+# -----------------------------
+# Sidebar source box
+# -----------------------------
+
+with st.sidebar:
+    st.markdown("## Search elsewhere")
+
+    if query:
+        st.info(
+            "Use these links to search linguistics-specific and broader scholarly sources."
+        )
+
+        st.markdown(
+            f"""
+            <div style="
+                border: 1px solid #ddd;
+                border-radius: 12px;
+                padding: 1rem;
+                background-color: #f8f9fa;
+            ">
+                <p style="margin-bottom: 0.7rem;">
+                    <strong>External searches for:</strong><br>
+                    <em>{query}</em>
+                </p>
+                <p>
+                    <a href="{lingbuzz_search_url(query)}" target="_blank">
+                        Search LingBuzz
+                    </a>
+                </p>
+                <p>
+                    <a href="{google_scholar_search_url(query)}" target="_blank">
+                        Search Google Scholar
+                    </a>
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.info(
+            "Enter keywords in the main search box to generate LingBuzz and "
+            "Google Scholar links."
+        )
+
+
+# -----------------------------
+# Main search
+# -----------------------------
+
+if st.button("Search OpenAlex") and query:
+    query_terms = tokenize_query(query)
+
+    if not query_terms:
+        st.warning("Please enter more specific keywords.")
+        st.stop()
+
+    st.markdown("### Keyword constraint")
+    st.write(
+        "The app will only return works where all of these keywords appear "
+        "in the title, abstract, or OpenAlex concepts:"
+    )
+    st.code(", ".join(query_terms))
 
     with st.spinner("Searching OpenAlex..."):
         try:
@@ -193,10 +272,13 @@ if st.button("Search") and query:
             st.stop()
 
     if not works:
-        st.warning("No relevant results found. Try different or broader keywords.")
+        st.warning(
+            "No works found that include all keywords. Try fewer keywords, "
+            "broader terms, or singular/plural variants."
+        )
         st.stop()
 
-    st.subheader(f"Top results for: {query}")
+    st.subheader(f"Top OpenAlex results for: {query}")
 
     for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
@@ -223,4 +305,3 @@ if st.button("Search") and query:
                     st.write(abstract)
 
             st.divider()
-            
