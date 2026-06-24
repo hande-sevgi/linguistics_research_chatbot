@@ -1,4 +1,4 @@
-import re
+ import re
 from urllib.parse import quote_plus
 
 import requests
@@ -18,7 +18,8 @@ st.set_page_config(
 st.title("What Have Others Found Before Me?")
 st.caption(
     "A literature-discovery tool for linguistics researchers. "
-    "Search OpenAlex, then continue the search in Google Scholar or LingBuzz."
+    "Search open scholarly metadata from OpenAlex, then continue the search "
+    "in Google Scholar or LingBuzz."
 )
 
 
@@ -68,66 +69,6 @@ EXCLUDED_NON_LINGUISTIC_TERMS = {
     "nanoparticles", "soil", "leaf", "leaves", "root", "roots",
     "stem", "stems", "organism", "organisms", "tissue", "tissues",
     "specimen", "specimens", "embryo", "embryonic"
-}
-
-LINGUISTIC_SUBFIELDS = {
-    "Syntax": {
-        "syntax", "syntactic", "sentence structure", "word order",
-        "clause", "clausal", "movement", "agreement", "case", "binding",
-        "argument structure", "island", "islands", "ellipsis"
-    },
-    "Semantics": {
-        "semantics", "semantic", "meaning", "truth conditions",
-        "compositionality", "quantification", "scope", "modality",
-        "tense", "aspect", "event semantics", "plurality",
-        "definiteness", "presupposition"
-    },
-    "Pragmatics": {
-        "pragmatics", "pragmatic", "implicature", "presupposition",
-        "context", "common ground", "speech act", "speech acts",
-        "discourse", "information structure", "focus", "topic"
-    },
-    "Phonology": {
-        "phonology", "phonological", "prosody", "stress", "tone",
-        "intonation", "syllable", "segment", "feature", "features",
-        "vowel harmony", "phonotactics"
-    },
-    "Phonetics": {
-        "phonetics", "phonetic", "acoustic", "articulation",
-        "articulatory", "vowel", "consonant", "formant",
-        "voice onset time", "speech perception", "speech production"
-    },
-    "Morphology": {
-        "morphology", "morphological", "morpheme", "morphemes",
-        "affix", "suffix", "prefix", "inflection", "derivation",
-        "word formation", "distributed morphology", "allomorphy"
-    },
-    "Sociolinguistics": {
-        "sociolinguistics", "sociolinguistic", "variation",
-        "dialect", "register", "style", "language contact",
-        "code switching", "codeswitching", "identity", "community"
-    },
-    "Psycholinguistics": {
-        "psycholinguistics", "psycholinguistic", "processing",
-        "comprehension", "production", "reaction time",
-        "eye tracking", "language acquisition", "sentence processing"
-    },
-    "Computational linguistics / NLP": {
-        "computational linguistics", "natural language processing",
-        "nlp", "language model", "language models", "corpus",
-        "annotation", "parsing", "parser", "machine translation",
-        "large language model", "large language models"
-    },
-    "Typology / Fieldwork": {
-        "typology", "typological", "fieldwork", "elicitation",
-        "cross-linguistic", "crosslinguistic", "language documentation",
-        "endangered language", "endangered languages", "descriptive grammar"
-    },
-    "Sign language / Gesture": {
-        "sign language", "sign languages", "gesture", "gestures",
-        "modality", "visual modality", "manual", "nonmanual",
-        "classifier", "classifiers", "iconicity", "signing"
-    },
 }
 
 
@@ -222,33 +163,6 @@ def infer_query_phrases(query):
         )
 
     return phrases
-
-
-def describe_interpreted_query(query):
-    """
-    Create a readable explanation of how the app interpreted the query.
-    """
-    content_terms = extract_content_terms(query)
-
-    if len(content_terms) >= 3:
-        return (
-            "The app interpreted your query as a search for works connecting "
-            f"{', '.join(content_terms[:-1])}, and {content_terms[-1]}."
-        )
-
-    if len(content_terms) == 2:
-        return (
-            "The app interpreted your query as a search for works connecting "
-            f"{content_terms[0]} and {content_terms[1]}."
-        )
-
-    if len(content_terms) == 1:
-        return (
-            "The app interpreted your query as a focused search for "
-            f"{content_terms[0]}."
-        )
-
-    return "The app could not identify enough content terms in the query."
 
 
 def is_query_too_broad(query):
@@ -379,48 +293,6 @@ def is_linguistics_work(work):
     return has_linguistics_signal(work) and not is_excluded_non_linguistic_work(work)
 
 
-def selected_subfield_terms(selected_subfields):
-    """Collect search terms for the selected linguistic subfields."""
-    terms = set()
-
-    for subfield in selected_subfields:
-        terms.update(LINGUISTIC_SUBFIELDS.get(subfield, set()))
-
-    return terms
-
-
-def matches_selected_subfields(work, selected_subfields):
-    """
-    Return True if no subfield filter is selected, or if the work matches
-    at least one selected linguistic subfield.
-    """
-    if not selected_subfields:
-        return True
-
-    searchable_text = get_work_searchable_text(work)
-    terms = selected_subfield_terms(selected_subfields)
-
-    return any(term in searchable_text for term in terms)
-
-
-def subfield_match_labels(work, selected_subfields=None):
-    """
-    Return readable subfield labels that match the work.
-    If selected_subfields is provided, only check those.
-    """
-    searchable_text = get_work_searchable_text(work)
-
-    subfields_to_check = selected_subfields or list(LINGUISTIC_SUBFIELDS.keys())
-    matched = []
-
-    for subfield in subfields_to_check:
-        terms = LINGUISTIC_SUBFIELDS.get(subfield, set())
-        if any(term in searchable_text for term in terms):
-            matched.append(subfield)
-
-    return matched
-
-
 def contains_required_abstract_terms(work, content_terms, min_matches=2):
     """
     Return True if the abstract contains enough of the user's content terms.
@@ -439,7 +311,7 @@ def contains_required_abstract_terms(work, content_terms, min_matches=2):
     return count_content_term_matches(abstract, content_terms) >= required_matches
 
 
-def relevance_score(work, content_terms, inferred_phrases, selected_subfields=None):
+def relevance_score(work, content_terms, inferred_phrases):
     """
     Score how central the user's topic is to the work.
 
@@ -447,7 +319,6 @@ def relevance_score(work, content_terms, inferred_phrases, selected_subfields=No
     Abstract matches matter strongly.
     Inferred phrase matches help.
     OpenAlex topic/concept matches help.
-    Selected subfield matches help.
     Citation count is only a small bonus.
     """
     title = normalize_text(work.get("title") or "")
@@ -485,18 +356,15 @@ def relevance_score(work, content_terms, inferred_phrases, selected_subfields=No
     if is_linguistics_work(work):
         score += 5
 
-    if selected_subfields and matches_selected_subfields(work, selected_subfields):
-        score += 5
-
     cited_by = work.get("cited_by_count", 0) or 0
     score += min(cited_by / 100, 3)
 
     return score
 
 
-def build_openalex_search_query(query, selected_subfields=None):
+def build_openalex_search_query(query):
     """
-    Add linguistics bias and optional subfield bias to the OpenAlex search.
+    Add linguistics bias to the OpenAlex search.
 
     This helps prevent ambiguous searches such as 'morphology'
     from drifting into biology.
@@ -504,17 +372,10 @@ def build_openalex_search_query(query, selected_subfields=None):
     content_terms = extract_content_terms(query)
     base_query = " ".join(content_terms)
 
-    subfield_query = ""
-    if selected_subfields:
-        subfield_query = " ".join(
-            subfield.lower()
-            for subfield in selected_subfields
-        )
-
-    return f"{base_query} linguistics language {subfield_query}".strip()
+    return f"{base_query} linguistics language".strip()
 
 
-def search_openalex_relevant(query, selected_subfields=None, max_results=10):
+def search_openalex_relevant(query, max_results=10):
     """
     Search OpenAlex, keep only linguistics-related works whose abstracts
     contain enough of the user's content terms, then rerank them.
@@ -523,7 +384,7 @@ def search_openalex_relevant(query, selected_subfields=None, max_results=10):
 
     content_terms = extract_content_terms(query)
     inferred_phrases = infer_query_phrases(query)
-    openalex_query = build_openalex_search_query(query, selected_subfields)
+    openalex_query = build_openalex_search_query(query)
 
     params = {
         "search": openalex_query,
@@ -543,7 +404,6 @@ def search_openalex_relevant(query, selected_subfields=None, max_results=10):
     for work in works:
         if (
             is_linguistics_work(work)
-            and matches_selected_subfields(work, selected_subfields)
             and contains_required_abstract_terms(
                 work,
                 content_terms,
@@ -553,8 +413,7 @@ def search_openalex_relevant(query, selected_subfields=None, max_results=10):
             score = relevance_score(
                 work,
                 content_terms,
-                inferred_phrases,
-                selected_subfields
+                inferred_phrases
             )
             work["custom_relevance_score"] = score
             scored_works.append(work)
@@ -568,15 +427,9 @@ def search_openalex_relevant(query, selected_subfields=None, max_results=10):
     return scored_works[:max_results]
 
 
-def google_scholar_search_url(query, selected_subfields=None):
+def google_scholar_search_url(query):
     """Create a Google Scholar search link."""
-    scholar_terms = [query, "linguistics"]
-
-    if selected_subfields:
-        scholar_terms.extend(selected_subfields)
-
-    scholar_query = " ".join(scholar_terms)
-
+    scholar_query = f"{query} linguistics"
     return f"https://scholar.google.com/scholar?q={quote_plus(scholar_query)}"
 
 
@@ -638,25 +491,11 @@ def get_topic_label(work):
 
 
 # -----------------------------
-# Sidebar filters
-# -----------------------------
-
-st.sidebar.markdown("### Narrow by linguistic subfield")
-st.sidebar.caption("Optional. Leave all unchecked to search across linguistics.")
-
-selected_subfields = []
-
-for subfield in LINGUISTIC_SUBFIELDS.keys():
-    if st.sidebar.checkbox(subfield):
-        selected_subfields.append(subfield)
-
-
-# -----------------------------
 # User input
 # -----------------------------
 
 query = st.text_input(
-    "Enter your research topic",
+    "What do you want to research?",
     placeholder="e.g. Turkish ideophones under negation"
 )
 
@@ -676,33 +515,12 @@ if st.button("Search") and query:
         st.stop()
 
     content_terms = extract_content_terms(query)
-    inferred_phrases = infer_query_phrases(query)
 
     if not content_terms:
         st.warning("Please enter more specific keywords.")
         st.stop()
 
     st.markdown("## Results")
-
-    # -----------------------------
-    # Query interpretation
-    # -----------------------------
-
-    st.markdown("### How the app interpreted your query")
-    st.write(describe_interpreted_query(query))
-
-    st.write("Content terms used for filtering:")
-    st.code(", ".join(content_terms))
-
-    if inferred_phrases:
-        st.write("Phrase-like combinations used for ranking:")
-        st.code(", ".join(inferred_phrases))
-
-    if selected_subfields:
-        st.write("Selected subfield filters:")
-        st.code(", ".join(selected_subfields))
-
-    st.markdown("---")
 
     # -----------------------------
     # Source cards
@@ -764,7 +582,7 @@ if st.button("Search") and query:
             ">
                 <h4>Google Scholar</h4>
                 <p>Broader scholarly search with a linguistics bias.</p>
-                <a href="{google_scholar_search_url(query, selected_subfields)}" target="_blank">
+                <a href="{google_scholar_search_url(query)}" target="_blank">
                     Search Google Scholar
                 </a>
             </div>
@@ -782,7 +600,6 @@ if st.button("Search") and query:
         try:
             works = search_openalex_relevant(
                 query,
-                selected_subfields=selected_subfields,
                 max_results=10
             )
         except Exception as error:
@@ -792,10 +609,9 @@ if st.button("Search") and query:
     if not works:
         st.warning(
             "No linguistics-related OpenAlex works found whose abstract contains "
-            "enough of the content terms and matches the selected subfield filters. "
-            "Try fewer filters, add a language, add a construction, or use a more "
-            "specific topic such as 'Turkish morphology', 'ideophones under negation', "
-            "or 'clitics in syntax'."
+            "enough of the content terms. Try adding a language, a construction, "
+            "a phenomenon, or a theoretical domain, such as 'Turkish morphology', "
+            "'ideophones under negation', or 'clitics in syntax'."
         )
         st.stop()
 
@@ -811,9 +627,6 @@ if st.button("Search") and query:
         abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
         topic_label = get_topic_label(work)
 
-        abstract_matches = count_content_term_matches(abstract, content_terms)
-        matched_subfields = subfield_match_labels(work, selected_subfields)
-
         with st.container():
             st.markdown(f"#### {index}. {title}")
             st.markdown(f"**Authors:** {author_text}")
@@ -822,14 +635,6 @@ if st.button("Search") and query:
                 f"**Relevance score:** {score:.2f}"
             )
             st.markdown(f"**OpenAlex topic:** {topic_label}")
-            st.markdown(
-                f"**Matched content terms in abstract:** {abstract_matches}"
-            )
-
-            if matched_subfields:
-                st.markdown(
-                    f"**Matched subfield(s):** {', '.join(matched_subfields)}"
-                )
 
             if link:
                 st.markdown(f"[Open work]({link})")
