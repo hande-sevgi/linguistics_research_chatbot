@@ -41,6 +41,21 @@ STOPWORDS = {
     "that", "these", "those"
 }
 
+SUBFIELD_TERMS = {
+    "syntax", "syntactic",
+    "semantics", "semantic",
+    "pragmatics", "pragmatic",
+    "phonology", "phonological",
+    "phonetics", "phonetic",
+    "morphology", "morphological",
+    "morphosyntax", "morphosyntactic",
+    "sociolinguistics", "sociolinguistic",
+    "psycholinguistics", "psycholinguistic",
+    "typology", "typological",
+    "fieldwork",
+    "computational", "nlp"
+}
+
 LANGUAGE_OR_REGION_TERMS = {
     "turkish", "english", "german", "french", "spanish", "italian",
     "arabic", "japanese", "korean", "chinese", "russian", "greek",
@@ -64,7 +79,8 @@ LINGUISTICS_SIGNAL_TERMS = {
     "natural language processing", "translation", "anaphora",
     "agreement", "case marking", "tense", "aspect", "evidential",
     "evidentiality", "classifier", "noun phrase", "verb phrase",
-    "relative clause", "ideophone", "ideophones"
+    "relative clause", "ideophone", "ideophones", "demonstrative",
+    "demonstratives", "deixis", "clitic", "clitics"
 }
 
 EXCLUDED_NON_LINGUISTIC_TERMS = {
@@ -75,7 +91,7 @@ EXCLUDED_NON_LINGUISTIC_TERMS = {
     "neuron", "neural", "brain", "cancer", "tumor", "bacteria",
     "microbial", "material", "materials", "crystal", "crystals",
     "polymer", "surface", "nanoparticle", "nanoparticles", "soil",
-    "leaf", "leaves", "root", "roots", "stem", "stems", "organism",
+    "leaf", "leaves", "organism",
     "organisms", "tissue", "tissues", "specimen", "specimens",
     "embryo", "embryonic"
 }
@@ -149,86 +165,98 @@ def extract_content_terms(query):
     return content_terms
 
 
-def extract_context_terms(query):
+def classify_query_terms(query):
     """
-    Extract language/region/domain terms that function as context,
-    not as the main research topic.
+    Classify user query terms into:
+    - phenomenon terms: main linguistic objects/events/constructions
+    - language terms: languages, families, regions
+    - subfield terms: syntax, phonology, semantics, etc.
 
-    Example:
-    Turkish ideophones under negation
-    -> context: Turkish
-
-    ideophones in African languages
-    -> context: African, languages
+    Ranking gives highest priority to phenomenon terms and their combinations.
     """
     content_terms = extract_content_terms(query)
 
-    context_terms = [
-        term for term in content_terms
-        if term in LANGUAGE_OR_REGION_TERMS
-    ]
+    language_terms = []
+    subfield_terms = []
+    phenomenon_terms = []
 
-    return context_terms
+    for term in content_terms:
+        if term in LANGUAGE_OR_REGION_TERMS:
+            language_terms.append(term)
+        elif term in SUBFIELD_TERMS:
+            subfield_terms.append(term)
+        else:
+            phenomenon_terms.append(term)
+
+    return {
+        "content_terms": content_terms,
+        "phenomenon_terms": phenomenon_terms,
+        "language_terms": language_terms,
+        "subfield_terms": subfield_terms,
+    }
 
 
-def extract_core_terms(query):
+def infer_priority_phrases(query):
     """
-    Extract the main research terms, excluding language/region context.
+    Build ranking phrases in priority order.
 
-    Example:
-    Turkish ideophones under negation
-    -> core: ideophones, negation
+    Highest priority:
+    - phenomenon + phenomenon combinations
 
-    ideophones in African languages
-    -> core: ideophones
+    Medium priority:
+    - language/context + phenomenon combinations
+
+    Lowest priority:
+    - adjacent content phrases
     """
-    content_terms = extract_content_terms(query)
-    context_terms = set(extract_context_terms(query))
+    classified = classify_query_terms(query)
 
-    core_terms = [
-        term for term in content_terms
-        if term not in context_terms
-    ]
-
-    return core_terms
-
-
-def infer_query_phrases(query):
-    """
-    Infer phrase-like units without requiring punctuation.
-
-    Core terms are prioritized over context terms.
-
-    Example:
-    Turkish ideophones under negation
-    -> ideophones negation
-    -> Turkish ideophones
-
-    ideophones in African languages
-    -> ideophones African
-    -> African languages
-    """
-    content_terms = extract_content_terms(query)
-    core_terms = extract_core_terms(query)
-    context_terms = extract_context_terms(query)
+    content_terms = classified["content_terms"]
+    phenomenon_terms = classified["phenomenon_terms"]
+    language_terms = classified["language_terms"]
 
     phrases = []
 
-    # Highest priority: core-term combinations
-    for i in range(len(core_terms) - 1):
-        phrases.append(f"{core_terms[i]} {core_terms[i + 1]}")
+    # Highest priority: phenomenon + phenomenon combinations.
+    for i in range(len(phenomenon_terms)):
+        for j in range(i + 1, len(phenomenon_terms)):
+            phrases.append(
+                {
+                    "phrase": f"{phenomenon_terms[i]} {phenomenon_terms[j]}",
+                    "weight": 16,
+                }
+            )
+            phrases.append(
+                {
+                    "phrase": f"{phenomenon_terms[j]} {phenomenon_terms[i]}",
+                    "weight": 16,
+                }
+            )
 
-    # Secondary priority: context + core combinations
-    for context in context_terms:
-        for core in core_terms:
-            phrases.append(f"{context} {core}")
-            phrases.append(f"{core} {context}")
+    # Medium priority: language/context + phenomenon combinations.
+    for language in language_terms:
+        for phenomenon in phenomenon_terms:
+            phrases.append(
+                {
+                    "phrase": f"{language} {phenomenon}",
+                    "weight": 7,
+                }
+            )
+            phrases.append(
+                {
+                    "phrase": f"{phenomenon} {language}",
+                    "weight": 7,
+                }
+            )
 
-    # Lowest priority: adjacent content combinations
+    # Lowest priority: adjacent content terms.
     for i in range(len(content_terms) - 1):
-        phrase = f"{content_terms[i]} {content_terms[i + 1]}"
-        if phrase not in phrases:
-            phrases.append(phrase)
+        phrases.append(
+            {
+                "phrase": f"{content_terms[i]} {content_terms[i + 1]}",
+                "weight": 4,
+            }
+        )
 
     return phrases
 
@@ -262,25 +290,13 @@ def unit_in_text(unit, text):
     return any(variant in text for variant in term_variants(unit))
 
 
-def count_content_term_matches(text, content_terms):
-    """Count how many content terms appear in text."""
+def count_content_term_matches(text, terms):
+    """Count how many terms appear in text."""
     text = normalize_text(text)
 
     count = 0
-    for term in content_terms:
+    for term in terms:
         if unit_in_text(term, text):
-            count += 1
-
-    return count
-
-
-def count_phrase_matches(text, phrases):
-    """Count how many inferred phrases appear in text."""
-    text = normalize_text(text)
-
-    count = 0
-    for phrase in phrases:
-        if phrase in text:
             count += 1
 
     return count
@@ -353,14 +369,25 @@ def is_excluded_non_linguistic_work(work):
     return any(term in searchable_text for term in EXCLUDED_NON_LINGUISTIC_TERMS)
 
 
-def relevance_score(work, content_terms, inferred_phrases, core_terms=None, context_terms=None):
+def relevance_score(work, query):
     """
-    Score how central the user's topic is to the work.
+    Score results using a hierarchy:
 
-    Core research terms matter most.
-    Context terms such as language names or regions matter second.
-    Citation count is only a small bonus.
+    1. Phenomenon combinations receive the highest weight.
+    2. Individual phenomenon terms receive high weight.
+    3. Language/family/region terms receive medium weight.
+    4. Subfield terms receive low weight.
+    5. Linguistics signal helps preserve the narrow domain.
     """
+    classified = classify_query_terms(query)
+
+    phenomenon_terms = classified["phenomenon_terms"]
+    language_terms = classified["language_terms"]
+    subfield_terms = classified["subfield_terms"]
+    content_terms = classified["content_terms"]
+
+    priority_phrases = infer_priority_phrases(query)
+
     title = normalize_text(work.get("title") or "")
     abstract = normalize_text(
         reconstruct_abstract(work.get("abstract_inverted_index"))
@@ -368,83 +395,103 @@ def relevance_score(work, content_terms, inferred_phrases, core_terms=None, cont
     topic_text = get_openalex_topic_text(work)
     concept_text = get_concept_text(work)
 
-    core_terms = core_terms or content_terms
-    context_terms = context_terms or []
+    full_text = " ".join([title, abstract, topic_text, concept_text])
 
     score = 0
 
-    # Core topic terms: highest priority
-    for term in core_terms:
-        if unit_in_text(term, title):
-            score += 10
-        if unit_in_text(term, abstract):
-            score += 7
-        if unit_in_text(term, topic_text):
-            score += 4
-        if unit_in_text(term, concept_text):
-            score += 3
+    # 1. Highest priority: phenomenon combinations.
+    for item in priority_phrases:
+        phrase = item["phrase"]
+        weight = item["weight"]
 
-    # Context terms: useful, but not the main topic
-    for term in context_terms:
+        if phrase in title:
+            score += weight * 2
+        if phrase in abstract:
+            score += weight
+        if phrase in topic_text or phrase in concept_text:
+            score += weight / 2
+
+    # 2. Individual phenomenon terms.
+    for term in phenomenon_terms:
         if unit_in_text(term, title):
-            score += 4
+            score += 14
         if unit_in_text(term, abstract):
-            score += 3
+            score += 10
+        if unit_in_text(term, topic_text):
+            score += 6
+        if unit_in_text(term, concept_text):
+            score += 4
+
+    # 3. Language/family/region terms.
+    for term in language_terms:
+        if unit_in_text(term, title):
+            score += 5
+        if unit_in_text(term, abstract):
+            score += 4
         if unit_in_text(term, topic_text):
             score += 2
         if unit_in_text(term, concept_text):
             score += 1
 
-    phrase_text = " ".join([title, abstract, topic_text, concept_text])
-    phrase_matches = count_phrase_matches(phrase_text, inferred_phrases)
-    score += phrase_matches * 5
+    # 4. Subfield terms: lightest weight.
+    for term in subfield_terms:
+        if unit_in_text(term, title):
+            score += 3
+        if unit_in_text(term, abstract):
+            score += 2
+        if unit_in_text(term, topic_text):
+            score += 1
+        if unit_in_text(term, concept_text):
+            score += 1
 
-    core_abstract_matches = count_content_term_matches(abstract, core_terms)
-    core_title_matches = count_content_term_matches(title, core_terms)
+    # Require at least some connection to the phenomenon when one is present.
+    phenomenon_matches = count_content_term_matches(full_text, phenomenon_terms)
 
-    if core_abstract_matches >= 2:
-        score += 12
-    elif core_abstract_matches == 1:
-        score += 5
+    if phenomenon_terms and phenomenon_matches == 0:
+        score -= 40
 
-    if core_title_matches >= 2:
-        score += 12
-    elif core_title_matches == 1:
-        score += 5
+    # Reward multiple phenomenon matches.
+    if phenomenon_matches >= 2:
+        score += 18
+    elif phenomenon_matches == 1:
+        score += 8
 
-    # Penalize results that only match the context but not the core topic.
-    full_text = " ".join([title, abstract, topic_text, concept_text])
-    core_matches = count_content_term_matches(full_text, core_terms)
+    # Do not let language/context-only papers dominate.
+    language_matches = count_content_term_matches(full_text, language_terms)
 
-    if core_terms and core_matches == 0:
-        score -= 25
+    if phenomenon_terms and language_matches > 0 and phenomenon_matches == 0:
+        score -= 30
 
+    # Preserve linguistics domain.
     if has_linguistics_signal(work):
         score += 8
 
     if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
-        score -= 12
+        score -= 15
 
     cited_by = work.get("cited_by_count", 0) or 0
     score += min(cited_by / 100, 3)
+
+    # Small bonus if many original content terms appear somewhere.
+    content_matches = count_content_term_matches(full_text, content_terms)
+    score += min(content_matches * 2, 8)
 
     return score
 
 
 def search_openalex_relevant(query, max_results=25):
     """
-    Search OpenAlex broadly, then rank results by linguistic relevance,
-    core-topic relevance, and context relevance.
+    Search OpenAlex broadly, then rank results by:
+    - linguistics relevance,
+    - phenomenon relevance,
+    - phenomenon combinations,
+    - language/context relevance,
+    - subfield relevance.
 
-    This avoids hiding good results when OpenAlex metadata or abstracts
-    are incomplete, while still keeping the user's main phenomenon central.
+    This keeps linguistics as the narrow domain while letting the user's
+    phenomenon drive the ranking.
     """
     url = "https://api.openalex.org/works"
-
-    content_terms = extract_content_terms(query)
-    core_terms = extract_core_terms(query)
-    context_terms = extract_context_terms(query)
-    inferred_phrases = infer_query_phrases(query)
 
     params = {
         "search": query,
@@ -462,20 +509,13 @@ def search_openalex_relevant(query, max_results=25):
     scored_works = []
 
     for work in works:
-        score = relevance_score(
-            work,
-            content_terms,
-            inferred_phrases,
-            core_terms=core_terms,
-            context_terms=context_terms
-        )
+        score = relevance_score(work, query)
 
         # Remove only works that are very clearly outside linguistics
-        # and have no language/linguistics signal at all.
+        # and have no language/linguistics signal.
         if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
             continue
 
-        # Keep results with some connection to the query or linguistics.
         if score > 0:
             work["custom_relevance_score"] = score
             scored_works.append(work)
