@@ -17,7 +17,7 @@ st.set_page_config(
 
 st.title("What Have Others Found Before Me?")
 st.caption(
-    "A literature-discovery tool for linguistics researchers. "
+    "A linguistics literature-discovery tool. "
     "Search open scholarly metadata from OpenAlex, then continue the search "
     "in Google Scholar or LingBuzz."
 )
@@ -66,34 +66,152 @@ LANGUAGE_OR_REGION_TERMS = {
 }
 
 LINGUISTICS_SIGNAL_TERMS = {
-    "linguistic", "linguistics", "language", "languages", "grammar",
-    "syntax", "syntactic", "semantics", "semantic", "pragmatics",
-    "pragmatic", "phonology", "phonological", "phonetics", "phonetic",
-    "morphology", "morphological", "morphosyntax", "morphosyntactic",
-    "discourse", "utterance", "word", "words", "sentence", "sentences",
-    "clitic", "clitics", "negation", "adverb", "adverbial", "focus",
-    "information structure", "sign language", "gesture", "modality",
-    "typology", "bilingual", "multilingual", "corpus linguistics",
-    "language acquisition", "language processing", "sociolinguistics",
-    "psycholinguistics", "computational linguistics",
-    "natural language processing", "translation", "anaphora",
-    "agreement", "case marking", "tense", "aspect", "evidential",
-    "evidentiality", "classifier", "noun phrase", "verb phrase",
-    "relative clause", "ideophone", "ideophones", "demonstrative",
-    "demonstratives", "deixis", "clitic", "clitics"
+    "linguistics", "linguistic",
+    "language", "languages",
+    "grammar", "grammatical",
+    "syntax", "syntactic",
+    "semantics", "semantic",
+    "pragmatics", "pragmatic",
+    "phonology", "phonological",
+    "phonetics", "phonetic",
+    "morphology", "morphological",
+    "morphosyntax", "morphosyntactic",
+    "discourse", "utterance", "utterances",
+    "word", "words", "word order",
+    "sentence", "sentences",
+    "clitic", "clitics",
+    "negation", "negative polarity",
+    "adverb", "adverbial",
+    "focus", "information structure",
+    "topic", "topic marking",
+    "sign language", "sign languages",
+    "gesture", "gestures",
+    "modality",
+    "typology", "typological",
+    "fieldwork", "elicitation",
+    "language documentation",
+    "bilingual", "bilingualism",
+    "multilingual", "multilingualism",
+    "corpus linguistics",
+    "language acquisition",
+    "language processing",
+    "sociolinguistics", "sociolinguistic",
+    "psycholinguistics", "psycholinguistic",
+    "computational linguistics",
+    "natural language processing",
+    "translation",
+    "anaphora",
+    "agreement",
+    "case marking",
+    "tense",
+    "aspect",
+    "evidential", "evidentiality",
+    "classifier", "classifiers",
+    "noun phrase",
+    "verb phrase",
+    "relative clause",
+    "ideophone", "ideophones",
+    "demonstrative", "demonstratives",
+    "deixis", "deictic",
+    "morpheme", "morphemes",
+    "affix", "suffix", "prefix",
+    "inflection", "derivation",
+    "language family",
+    "dialect", "dialects",
+    "code switching", "codeswitching"
 }
 
 EXCLUDED_NON_LINGUISTIC_TERMS = {
-    "biology", "biological", "cell", "cells", "cellular", "molecular",
-    "genetics", "genome", "protein", "proteins", "plant", "plants",
-    "animal", "animals", "species", "medical", "medicine", "clinical",
-    "anatomy", "physiology", "disease", "patient", "patients",
-    "neuron", "neural", "brain", "cancer", "tumor", "bacteria",
-    "microbial", "material", "materials", "crystal", "crystals",
-    "polymer", "surface", "nanoparticle", "nanoparticles", "soil",
-    "leaf", "leaves", "organism",
-    "organisms", "tissue", "tissues", "specimen", "specimens",
-    "embryo", "embryonic"
+    # Engineering / construction / navigation
+    "construction project management",
+    "construction firms",
+    "construction industry",
+    "construction market",
+    "project management",
+    "civil engineering",
+    "engineering",
+    "inertial sensor",
+    "inertial sensors",
+    "position estimation",
+    "orientation estimation",
+    "navigation",
+    "robotics",
+    "mechanical engineering",
+    "electrical engineering",
+    "control systems",
+
+    # Business / economics / management
+    "business",
+    "management",
+    "economics",
+    "finance",
+    "market",
+    "markets",
+    "competitive",
+    "firm",
+    "firms",
+    "industry",
+    "organizational",
+    "strategy",
+    "international markets",
+
+    # Biology / medicine
+    "biology",
+    "biological",
+    "cell",
+    "cells",
+    "cellular",
+    "molecular",
+    "genetics",
+    "genome",
+    "protein",
+    "proteins",
+    "plant",
+    "plants",
+    "animal",
+    "animals",
+    "species",
+    "medical",
+    "medicine",
+    "clinical",
+    "anatomy",
+    "physiology",
+    "disease",
+    "patient",
+    "patients",
+    "neuron",
+    "neural",
+    "brain",
+    "cancer",
+    "tumor",
+    "bacteria",
+    "microbial",
+    "soil",
+    "leaf",
+    "leaves",
+    "root",
+    "roots",
+    "organism",
+    "organisms",
+    "tissue",
+    "tissues",
+    "specimen",
+    "specimens",
+    "embryo",
+    "embryonic",
+
+    # Materials / physical sciences
+    "material",
+    "materials",
+    "materials science",
+    "crystal",
+    "crystals",
+    "polymer",
+    "surface",
+    "nanoparticle",
+    "nanoparticles",
+    "chemical",
+    "chemistry"
 }
 
 
@@ -171,8 +289,6 @@ def classify_query_terms(query):
     - phenomenon terms: main linguistic objects/events/constructions
     - language terms: languages, families, regions
     - subfield terms: syntax, phonology, semantics, etc.
-
-    Ranking gives highest priority to phenomenon terms and their combinations.
     """
     content_terms = extract_content_terms(query)
 
@@ -348,9 +464,9 @@ def get_work_searchable_text(work):
 
 def has_linguistics_signal(work):
     """
-    Return True if the work appears to be linguistics-related.
+    Return True if the work has a clear language/linguistics signal.
 
-    This checks OpenAlex topic metadata, concepts, title, and abstract.
+    This checks title, abstract, OpenAlex topic metadata, and concepts.
     """
     searchable_text = get_work_searchable_text(work)
 
@@ -359,14 +475,27 @@ def has_linguistics_signal(work):
 
 def is_excluded_non_linguistic_work(work):
     """
-    Return True if the work looks like biology, medicine, materials science,
-    or another non-linguistic domain.
-
-    This is intentionally used softly, not as an absolute block in every case.
+    Return True if the work clearly belongs to a non-linguistic domain.
     """
     searchable_text = get_work_searchable_text(work)
 
     return any(term in searchable_text for term in EXCLUDED_NON_LINGUISTIC_TERMS)
+
+
+def is_linguistics_related(work):
+    """
+    Hard domain gate.
+
+    This is what makes the app different from OpenAlex:
+    OpenAlex is general; this tool only shows linguistics-related works.
+    """
+    if is_excluded_non_linguistic_work(work):
+        return False
+
+    if has_linguistics_signal(work):
+        return True
+
+    return False
 
 
 def relevance_score(work, query):
@@ -466,9 +595,6 @@ def relevance_score(work, query):
     if has_linguistics_signal(work):
         score += 8
 
-    if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
-        score -= 15
-
     cited_by = work.get("cited_by_count", 0) or 0
     score += min(cited_by / 100, 3)
 
@@ -481,12 +607,7 @@ def relevance_score(work, query):
 
 def search_openalex_relevant(query, max_results=25):
     """
-    Search OpenAlex broadly, then rank results by:
-    - linguistics relevance,
-    - phenomenon relevance,
-    - phenomenon combinations,
-    - language/context relevance,
-    - subfield relevance.
+    Search OpenAlex broadly, but show only linguistics-related works.
 
     This keeps linguistics as the narrow domain while letting the user's
     phenomenon drive the ranking.
@@ -495,7 +616,7 @@ def search_openalex_relevant(query, max_results=25):
 
     params = {
         "search": query,
-        "per-page": 100,
+        "per-page": 200,
         "sort": "relevance_score:desc",
         "mailto": "handesevgi@g.harvard.edu"
     }
@@ -509,12 +630,11 @@ def search_openalex_relevant(query, max_results=25):
     scored_works = []
 
     for work in works:
-        score = relevance_score(work, query)
-
-        # Remove only works that are very clearly outside linguistics
-        # and have no language/linguistics signal.
-        if is_excluded_non_linguistic_work(work) and not has_linguistics_signal(work):
+        # Hard linguistics-only gate.
+        if not is_linguistics_related(work):
             continue
+
+        score = relevance_score(work, query)
 
         if score > 0:
             work["custom_relevance_score"] = score
@@ -643,7 +763,7 @@ if st.button("Search") and query:
                 min-height: 165px;
             ">
                 <h4>OpenAlex</h4>
-                <p>Ranked results are shown below.</p>
+                <p>Linguistics-only ranked results are shown below.</p>
             </div>
             """,
             unsafe_allow_html=True
@@ -710,12 +830,14 @@ if st.button("Search") and query:
 
     if not works:
         st.warning(
-            "No OpenAlex results were found. Try a slightly broader query, such as "
-            "'Turkish morphology', 'ideophones negation', or 'clitics syntax'."
+            "No linguistics-related OpenAlex results were found. Try a slightly "
+            "broader or more explicitly linguistic query, such as "
+            "'Turkish morphology', 'ideophones negation', "
+            "'demonstratives deixis', or 'clitics syntax'."
         )
         st.stop()
 
-    st.markdown("### Top 25 OpenAlex results")
+    st.markdown("### Top 25 linguistics-related OpenAlex results")
 
     for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
