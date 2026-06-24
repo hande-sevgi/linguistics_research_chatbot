@@ -23,6 +23,23 @@ st.caption(
 
 
 # -----------------------------
+# Query settings
+# -----------------------------
+
+BROAD_SINGLE_TERMS = {
+    "syntax", "semantics", "phonology", "morphology", "pragmatics",
+    "linguistics", "language", "grammar", "discourse", "meaning",
+    "words", "sentences", "speech", "communication"
+}
+
+STOPWORDS = {
+    "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
+    "with", "by", "from", "about", "into", "across", "under", "over",
+    "between", "among", "through", "at", "as", "is", "are"
+}
+
+
+# -----------------------------
 # Helper functions
 # -----------------------------
 
@@ -36,44 +53,84 @@ def reconstruct_abstract(inverted_index):
         for pos in positions:
             words.append((pos, word))
 
-    words_sorted = sorted(words, key=lambda x: x[0])
+    words_sorted = sorted(words, key=lambda item: item[0])
     return " ".join(word for _, word in words_sorted)
 
 
-def tokenize_query(query):
-    """Split the user's query into meaningful searchable terms."""
-    stopwords = {
-        "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
-        "with", "by", "from", "about", "into", "across", "under"
-    }
-
-    terms = re.findall(r"\b\w+\b", query.lower())
-    terms = [term for term in terms if len(term) > 2 and term not in stopwords]
-
-    return terms
-
-
-def contains_all_keywords(work, query_terms):
+def extract_query_units(query):
     """
-    Return True only if every query term appears in the title,
-    abstract, or OpenAlex concept metadata.
+    Extract meaningful search units from the query.
+
+    Quoted phrases are kept as phrases:
+    "under negation" -> under negation
+
+    Remaining unquoted words are tokenized, with stopwords removed.
     """
-    title = (work.get("title") or "").lower()
+    query = query.strip().lower()
+
+    quoted_phrases = re.findall(r'"([^"]+)"', query)
+
+    query_without_phrases = re.sub(r'"[^"]+"', " ", query)
+    words = re.findall(r"\b\w+\b", query_without_phrases)
+
+    keywords = [
+        word for word in words
+        if len(word) > 2 and word not in STOPWORDS
+    ]
+
+    units = quoted_phrases + keywords
+
+    return units
+
+
+def is_query_too_broad(query):
+    """
+    Reject broad one-word queries like 'syntax',
+    but allow more specific one-word queries like 'clitics'.
+    """
+    units = extract_query_units(query)
+
+    if len(units) == 1 and units[0] in BROAD_SINGLE_TERMS:
+        return True
+
+    return False
+
+
+def abstract_match_count(abstract, query_units):
+    """
+    Count how many query units appear in the abstract.
+
+    Phrases count as one unit.
+    Stopwords inside phrases are not counted separately.
+    """
+    abstract = abstract.lower()
+
+    count = 0
+    for unit in query_units:
+        if unit in abstract:
+            count += 1
+
+    return count
+
+
+def contains_required_keywords(work, query_units, min_abstract_matches=2):
+    """
+    Return True only if the abstract contains at least two query units.
+
+    This keeps results focused on works where the user's topic is central,
+    rather than merely mentioned in the title or metadata.
+    """
     abstract = reconstruct_abstract(work.get("abstract_inverted_index")).lower()
 
-    concepts = work.get("concepts") or []
-    concept_text = " ".join(
-        concept.get("display_name", "") for concept in concepts
-    ).lower()
+    if not abstract:
+        return False
 
-    searchable_text = f"{title} {abstract} {concept_text}"
-
-    return all(term in searchable_text for term in query_terms)
+    return abstract_match_count(abstract, query_units) >= min_abstract_matches
 
 
-def relevance_score(work, query_terms):
+def relevance_score(work, query_units):
     """
-    Score how central the user's keywords are to the work.
+    Score how central the user's keywords/phrases are to the work.
 
     Title matches matter most.
     Abstract matches matter next.
@@ -90,16 +147,21 @@ def relevance_score(work, query_terms):
 
     score = 0
 
-    for term in query_terms:
-        if term in title:
+    for unit in query_units:
+        if unit in title:
             score += 5
-        if term in abstract:
-            score += 2
-        if term in concept_text:
+        if unit in abstract:
+            score += 3
+        if unit in concept_text:
             score += 2
 
-    title_matches = sum(1 for term in query_terms if term in title)
+    title_matches = sum(1 for unit in query_units if unit in title)
+    abstract_matches = abstract_match_count(abstract, query_units)
+
     if title_matches >= 2:
+        score += 5
+
+    if abstract_matches >= 2:
         score += 5
 
     cited_by = work.get("cited_by_count", 0) or 0
@@ -110,8 +172,8 @@ def relevance_score(work, query_terms):
 
 def search_openalex_relevant(query, max_results=10):
     """
-    Search OpenAlex, keep only works containing all keywords,
-    then rerank by custom relevance score.
+    Search OpenAlex, keep only works whose abstracts contain at least
+    two query units, then rerank by custom relevance score.
     """
     url = "https://api.openalex.org/works"
 
@@ -128,12 +190,13 @@ def search_openalex_relevant(query, max_results=10):
     data = response.json()
     works = data.get("results", [])
 
-    query_terms = tokenize_query(query)
+    query_units = extract_query_units(query)
 
     scored_works = []
+
     for work in works:
-        if contains_all_keywords(work, query_terms):
-            score = relevance_score(work, query_terms)
+        if contains_required_keywords(work, query_units, min_abstract_matches=2):
+            score = relevance_score(work, query_units)
             work["custom_relevance_score"] = score
             scored_works.append(work)
 
@@ -190,7 +253,7 @@ def get_work_link(work):
 
 query = st.text_input(
     "Enter keywords or a research topic",
-    placeholder="e.g. Turkish ideophones negation"
+    placeholder='e.g. Turkish ideophones "under negation"'
 )
 
 
@@ -199,9 +262,17 @@ query = st.text_input(
 # -----------------------------
 
 if st.button("Search") and query:
-    query_terms = tokenize_query(query)
+    if is_query_too_broad(query):
+        st.warning(
+            "Please provide more specific information. For example, instead of "
+            "'syntax', try 'clitics in syntax', 'word order in Turkish', or "
+            "'syntax of negation'."
+        )
+        st.stop()
 
-    if not query_terms:
+    query_units = extract_query_units(query)
+
+    if not query_units:
         st.warning("Please enter more specific keywords.")
         st.stop()
 
@@ -280,10 +351,10 @@ if st.button("Search") and query:
 
     st.markdown("### Keyword constraint")
     st.write(
-        "OpenAlex results below include all of these keywords in the title, "
-        "abstract, or OpenAlex concepts:"
+        "OpenAlex results below are filtered so that the abstract includes at least "
+        "two of these keyword units or phrases:"
     )
-    st.code(", ".join(query_terms))
+    st.code(", ".join(query_units))
 
     # -----------------------------
     # OpenAlex results
@@ -298,9 +369,10 @@ if st.button("Search") and query:
 
     if not works:
         st.warning(
-            "No OpenAlex works found that include all keywords. Try fewer keywords, "
-            "broader terms, or singular/plural variants. You can still use the LingBuzz "
-            "and Google Scholar links above."
+            "No OpenAlex works found whose abstract includes at least two of the "
+            "keyword units. Try fewer keywords, broader terms, singular/plural "
+            "variants, or quotation marks for exact phrases. You can still use "
+            "the LingBuzz and Google Scholar links above."
         )
         st.stop()
 
