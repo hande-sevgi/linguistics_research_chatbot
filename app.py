@@ -1,6 +1,13 @@
-import requests
 import re
+from urllib.parse import quote_plus
+
+import requests
 import streamlit as st
+
+
+# -----------------------------
+# Page setup
+# -----------------------------
 
 st.set_page_config(
     page_title="Linguistics Research Assistant",
@@ -8,48 +15,19 @@ st.set_page_config(
     layout="centered"
 )
 
-from urllib.parse import quote_plus
-
-def lingbuzz_search_url(query):
-    return f"https://lingbuzz.net/lingbuzz/search?q={quote_plus(query)}"
-    
 st.title("Linguistics Research Assistant")
-st.caption("Search open scholarly metadata from OpenAlex for linguistics-related works.")
-st.markdown("### Additional sources")
-st.markdown(f"[Search LingBuzz for this topic]({lingbuzz_search_url(query)})")
+st.caption(
+    "Search open scholarly metadata from OpenAlex and rank works by how centrally "
+    "your keywords appear in the title, abstract, and concepts."
+)
+
+
+# -----------------------------
+# Helper functions
+# -----------------------------
 
 def reconstruct_abstract(inverted_index):
-    if not inverted_index:
-        return ""
-
-    words = []
-    for word, positions in inverted_index.items():
-        for pos in positions:
-            words.append((pos, word))
-
-    words_sorted = sorted(words, key=lambda x: x[0])
-    return " ".join(word for _, word in words_sorted)
-
-def search_openalex(query, max_results=10):
-    url = "https://api.openalex.org/works"
-
-    params = {
-        "search": query,
-        "per-page": max_results,
-        "sort": "cited_by_count:desc",
-        "mailto": "handesevgi@g.harvard.edu"
-    }
-
-    response = requests.get(url, params=params, timeout=20)
-    response.raise_for_status()
-
-    data = response.json()
-    return data.get("results", [])
-
-import requests
-import re
-
-def reconstruct_abstract(inverted_index):
+    """Reconstruct OpenAlex abstracts from inverted-index format."""
     if not inverted_index:
         return ""
 
@@ -63,17 +41,14 @@ def reconstruct_abstract(inverted_index):
 
 
 def tokenize_query(query):
-    """
-    Split the user's query into searchable terms.
-    Removes very short/common words.
-    """
+    """Split the user's query into meaningful search terms."""
     stopwords = {
         "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
-        "with", "by", "from", "about"
+        "with", "by", "from", "about", "into", "across", "under"
     }
 
     terms = re.findall(r"\b\w+\b", query.lower())
-    terms = [t for t in terms if len(t) > 2 and t not in stopwords]
+    terms = [term for term in terms if len(term) > 2 and term not in stopwords]
 
     return terms
 
@@ -81,10 +56,11 @@ def tokenize_query(query):
 def relevance_score(work, query_terms):
     """
     Score how central the user's keywords are to the work.
+
     Title matches matter most.
     Abstract matches matter next.
-    Concept matches also help.
-    Citations are only a small bonus.
+    OpenAlex concept matches also help.
+    Citation count is only a small bonus.
     """
     title = (work.get("title") or "").lower()
     abstract = reconstruct_abstract(work.get("abstract_inverted_index")).lower()
@@ -104,12 +80,10 @@ def relevance_score(work, query_terms):
         if term in concept_text:
             score += 2
 
-    # Bonus if multiple query terms appear in the title
     title_matches = sum(1 for term in query_terms if term in title)
     if title_matches >= 2:
         score += 5
 
-    # Small citation bonus, capped so famous but irrelevant papers do not dominate
     cited_by = work.get("cited_by_count", 0) or 0
     score += min(cited_by / 100, 3)
 
@@ -117,9 +91,7 @@ def relevance_score(work, query_terms):
 
 
 def search_openalex_relevant(query, max_results=10):
-    """
-    Search broadly in OpenAlex, then rerank by thematic relevance.
-    """
+    """Search OpenAlex broadly, then rerank by custom thematic relevance."""
     url = "https://api.openalex.org/works"
 
     params = {
@@ -141,69 +113,107 @@ def search_openalex_relevant(query, max_results=10):
     for work in works:
         score = relevance_score(work, query_terms)
         work["custom_relevance_score"] = score
-        scored_works.append(work)
 
-    # Keep only works with meaningful keyword overlap
-    scored_works = [
-        work for work in scored_works
-        if work["custom_relevance_score"] > 0
-    ]
+        if score > 0:
+            scored_works.append(work)
 
     scored_works = sorted(
         scored_works,
-        key=lambda w: w["custom_relevance_score"],
+        key=lambda work: work["custom_relevance_score"],
         reverse=True
     )
 
     return scored_works[:max_results]
-    
-query = st.text_input("Enter keywords, e.g. Turkish ideophones under negation")
+
+
+def lingbuzz_search_url(query):
+    """Create a LingBuzz search link for the user's query."""
+    return f"https://lingbuzz.net/lingbuzz/search?q={quote_plus(query)}"
+
+
+def google_scholar_search_url(query):
+    """Create a Google Scholar search link for the user's query."""
+    return f"https://scholar.google.com/scholar?q={quote_plus(query)}"
+
+
+def get_author_text(work, max_authors=4):
+    """Return a readable author string from OpenAlex authorships."""
+    authorships = work.get("authorships", [])
+    authors = []
+
+    for authorship in authorships[:max_authors]:
+        author = authorship.get("author", {})
+        name = author.get("display_name")
+        if name:
+            authors.append(name)
+
+    if len(authorships) > max_authors:
+        authors.append("et al.")
+
+    return ", ".join(authors) if authors else "Unknown authors"
+
+
+def get_work_link(work):
+    """Return the best available link for an OpenAlex work."""
+    doi = work.get("doi")
+    openalex_url = work.get("id")
+
+    primary_location = work.get("primary_location") or {}
+    landing_page_url = primary_location.get("landing_page_url")
+
+    return doi or landing_page_url or openalex_url
+
+
+# -----------------------------
+# User input
+# -----------------------------
+
+query = st.text_input(
+    "Enter keywords or a research topic",
+    placeholder="e.g. Turkish ideophones negation"
+)
+
+max_results = st.slider(
+    "Number of results",
+    min_value=5,
+    max_value=20,
+    value=10
+)
 
 if st.button("Search") and query:
+    st.markdown("### Search this topic elsewhere")
+    st.markdown(f"- [LingBuzz]({lingbuzz_search_url(query)})")
+    st.markdown(f"- [Google Scholar]({google_scholar_search_url(query)})")
+
     with st.spinner("Searching OpenAlex..."):
         try:
-            works = search_openalex(query, max_results=10)
-        except Exception as e:
-            st.error(f"OpenAlex search failed: {e}")
+            works = search_openalex_relevant(query, max_results=max_results)
+        except Exception as error:
+            st.error(f"OpenAlex search failed: {error}")
             st.stop()
 
     if not works:
-        st.warning("No results found. Try different keywords.")
+        st.warning("No relevant results found. Try different or broader keywords.")
         st.stop()
 
     st.subheader(f"Top results for: {query}")
 
-    for i, work in enumerate(works, start=1):
+    for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
         year = work.get("publication_year") or "n.d."
         cited_by = work.get("cited_by_count", 0)
-        doi = work.get("doi")
-        openalex_url = work.get("id")
-
-        authorships = work.get("authorships", [])
-        authors = []
-        for authorship in authorships[:4]:
-            author = authorship.get("author", {})
-            name = author.get("display_name")
-            if name:
-                authors.append(name)
-
-        if len(authorships) > 4:
-            authors.append("et al.")
-
-        author_text = ", ".join(authors) if authors else "Unknown authors"
-
-        primary_location = work.get("primary_location") or {}
-        landing_page_url = primary_location.get("landing_page_url")
-
-        link = doi or landing_page_url or openalex_url
-
+        score = work.get("custom_relevance_score", 0)
+        author_text = get_author_text(work)
+        link = get_work_link(work)
         abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
 
         with st.container():
-            st.markdown(f"### {i}. {title}")
+            st.markdown(f"### {index}. {title}")
             st.markdown(f"**Authors:** {author_text}")
-            st.markdown(f"**Year:** {year} | **Cited by:** {cited_by}")
+            st.markdown(
+                f"**Year:** {year} | **Cited by:** {cited_by} | "
+                f"**Relevance score:** {score:.2f}"
+            )
 
             if link:
                 st.markdown(f"[Open work]({link})")
@@ -213,3 +223,4 @@ if st.button("Search") and query:
                     st.write(abstract)
 
             st.divider()
+            
