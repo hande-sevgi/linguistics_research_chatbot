@@ -165,7 +165,7 @@ Please return the 10 most relevant works for this query.
 
     with st.spinner("Ranking and summarizing works..."):
         response = client.responses.create(
-            model="gpt-5.5-mini",
+            model="gpt-4.1-mini",
             input=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
