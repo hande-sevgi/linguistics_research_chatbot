@@ -344,7 +344,7 @@ def relevance_score(work, content_terms, inferred_phrases):
     return score
 
 
-def search_openalex_relevant(query, max_results=10):
+def search_openalex_relevant(query, max_results=25):
     """
     Search OpenAlex broadly, then rank results by linguistic relevance
     and topic relevance.
@@ -567,7 +567,7 @@ if st.button("Search") and query:
         try:
             works = search_openalex_relevant(
                 query,
-                max_results=10
+                max_results=25
             )
         except Exception as error:
             st.error(f"OpenAlex search failed: {error}")
@@ -580,7 +580,7 @@ if st.button("Search") and query:
         )
         st.stop()
 
-    st.markdown("### Top 10 OpenAlex results")
+    st.markdown("### Top 25 OpenAlex results")
 
     for index, work in enumerate(works, start=1):
         title = work.get("title") or "Untitled"
