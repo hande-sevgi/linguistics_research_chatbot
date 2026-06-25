@@ -12,6 +12,7 @@ from linguistics_terms import (
     KNOWN_COLLOCATIONS,
     TERM_VARIANTS,
     LINGUISTIC_DOMAIN_TERMS,
+    NON_LINGUISTIC_EXCLUSION_TERMS,
 )
 
 
@@ -46,6 +47,39 @@ def normalize_text(text):
     return text.strip()
 
 
+def term_in_text(term, text):
+    """
+    Return True if term appears as a word/phrase in text.
+
+    This avoids false matches like:
+    cell matching excellent
+    gene matching general
+    """
+    term = normalize_text(term)
+    text = normalize_text(text)
+
+    if not term:
+        return False
+
+    escaped = re.escape(term)
+    escaped = escaped.replace(r"\ ", r"\s+")
+
+    pattern = r"\b" + escaped + r"\b"
+
+    return re.search(pattern, text) is not None
+
+
+def contains_any_term(text, terms):
+    """Return True if any term from a set appears in text."""
+    text = normalize_text(text)
+
+    for term in terms:
+        if term_in_text(term, text):
+            return True
+
+    return False
+
+
 def reconstruct_abstract(inverted_index):
     """Reconstruct OpenAlex abstracts from inverted-index format."""
     if not inverted_index:
@@ -60,64 +94,8 @@ def reconstruct_abstract(inverted_index):
     words_sorted = sorted(words, key=lambda item: item[0])
     return " ".join(word for _, word in words_sorted)
 
-def build_vocabulary_for_typo_correction():
-    """
-    Build a vocabulary of known linguistic words and phrases that can be used
-    for light typo correction.
-    """
-    vocabulary = set()
 
-    vocabulary.update(SPECIALIZED_LINGUISTIC_TERMS)
-    vocabulary.update(KNOWN_COLLOCATIONS)
-    vocabulary.update(LINGUISTIC_DOMAIN_TERMS)
-    vocabulary.update(TERM_VARIANTS.keys())
-
-    for variants in TERM_VARIANTS.values():
-        vocabulary.update(variants)
-
-    return vocabulary
-
-
-def correct_query_unit_typo(unit):
-    """
-    Correct likely typos in a query unit using the controlled vocabulary.
-
-    This is intentionally conservative: it only corrects when there is a close
-    match in the known linguistic vocabulary.
-    """
-    vocabulary = build_vocabulary_for_typo_correction()
-
-    unit = normalize_text(unit)
-
-    if unit in vocabulary:
-        return unit
-
-    matches = get_close_matches(
-        unit,
-        vocabulary,
-        n=1,
-        cutoff=0.86
-    )
-
-    if matches:
-        return matches[0]
-
-    return unit
-
-
-def correct_query_units(query_units):
-    """
-    Apply typo correction to all extracted query units.
-    """
-    corrected_units = []
-
-    for unit in query_units:
-        corrected_unit = correct_query_unit_typo(unit)
-
-        if corrected_unit not in corrected_units:
-            corrected_units.append(corrected_unit)
-
-    return corrected_units
+def extract_query_units(query):
     """
     Extract meaningful search units from the query.
 
@@ -191,8 +169,70 @@ def correct_query_units(query_units):
 
     return unique_units
 
-raw_query_units = extract_query_units(query)
-query_units = correct_query_units(raw_query_units)
+
+# -----------------------------
+# Typo correction helpers
+# -----------------------------
+
+def build_vocabulary_for_typo_correction():
+    """
+    Build a vocabulary of known linguistic words and phrases that can be used
+    for light typo correction.
+    """
+    vocabulary = set()
+
+    vocabulary.update(SPECIALIZED_LINGUISTIC_TERMS)
+    vocabulary.update(KNOWN_COLLOCATIONS)
+    vocabulary.update(LINGUISTIC_DOMAIN_TERMS)
+    vocabulary.update(TERM_VARIANTS.keys())
+
+    for variants in TERM_VARIANTS.values():
+        vocabulary.update(variants)
+
+    return vocabulary
+
+
+def correct_query_unit_typo(unit):
+    """
+    Correct likely typos in a query unit using the controlled vocabulary.
+
+    This is intentionally conservative.
+    """
+    vocabulary = build_vocabulary_for_typo_correction()
+    unit = normalize_text(unit)
+
+    if unit in vocabulary:
+        return unit
+
+    matches = get_close_matches(
+        unit,
+        vocabulary,
+        n=1,
+        cutoff=0.86
+    )
+
+    if matches:
+        return matches[0]
+
+    return unit
+
+
+def correct_query_units(query_units):
+    """Apply typo correction to extracted query units."""
+    corrected_units = []
+
+    for unit in query_units:
+        corrected_unit = correct_query_unit_typo(unit)
+
+        if corrected_unit not in corrected_units:
+            corrected_units.append(corrected_unit)
+
+    return corrected_units
+
+
+# -----------------------------
+# Query helpers
+# -----------------------------
 
 def get_unit_variants(unit):
     """
@@ -204,8 +244,6 @@ def get_unit_variants(unit):
     ideophones / ideophone / ideophonic
     clitics / clitic
     negation / negative / negated
-
-    This is intentionally simple, not a full linguistic stemmer.
     """
     unit = normalize_text(unit)
     variants = {unit}
@@ -235,21 +273,13 @@ def get_unit_variants(unit):
         variants.add(unit + "s")
 
     # Field noun/adjective pairs.
-    # pragmatics -> pragmatic
-    # semantics -> semantic
-    # phonetics -> phonetic
     if unit.endswith("ics") and len(unit) > 5:
         variants.add(unit[:-1])
 
-    # pragmatic -> pragmatics
-    # semantic -> semantics
-    # phonetic -> phonetics
     if unit.endswith("ic") and len(unit) > 4:
         variants.add(unit + "s")
 
-    # morphology -> morphological
-    # phonology -> phonological
-    # typology -> typological
+    # morphology -> morphological, phonology -> phonological
     if unit.endswith("ology") and len(unit) > 6:
         variants.add(unit[:-1] + "ical")
 
@@ -261,7 +291,8 @@ def is_query_too_broad(query):
     Reject broad one-word queries like 'syntax',
     but allow more specific one-word queries like 'clitics' or 'ideophones'.
     """
-    units = extract_query_units(query)
+    raw_units = extract_query_units(query)
+    units = correct_query_units(raw_units)
 
     if len(units) == 1 and units[0] in BROAD_SINGLE_TERMS:
         return True
@@ -290,55 +321,21 @@ def get_work_text_fields(work):
     return title, abstract, concept_text
 
 
-def contains_any_term(text, terms):
-    """Return True if any term from a set appears in text."""
-    text = normalize_text(text)
-
-    for term in terms:
-        term = normalize_text(term)
-        if term and term in text:
-            return True
-
-    return False
-
-def is_linguistics_related(work, query_units):
-    """
-    Barrier 1: decide whether the work belongs to linguistics.
-
-    This is the first and most important constraint.
-
-    Only after passing this barrier can a work become a Golden Catch
-    or Nearby Find.
-    """
-    title, abstract, concept_text = get_work_text_fields(work)
-    combined_text = f"{title} {abstract} {concept_text}"
-
-    # Barrier 1: require a positive linguistics signal.
-    linguistic_signal_terms = build_linguistic_signal_terms()
-
-    has_linguistic_signal = contains_any_term(
-        combined_text,
-        linguistic_signal_terms
-    )
-
-    if not has_linguistic_signal:
-        return False
-
-    return True
-
 def is_linguistics_related(work, query_units):
     """
     Hidden first barrier: only linguistics works can pass.
 
-    Important:
+    The app should never display biology/medicine/etc. results.
     Ambiguous words like morphology, stem, branch, structure, and development
-    do not count by themselves as evidence that a work is linguistics.
+    do not count by themselves as proof that a work is linguistics.
     """
     title, abstract, concept_text = get_work_text_fields(work)
     combined_text = f"{title} {abstract} {concept_text}"
 
-    # Absolute biology / medicine / non-linguistics exclusions.
-    non_linguistic_terms = {
+    # Absolute exclusions.
+    hard_exclusions = set(NON_LINGUISTIC_EXCLUSION_TERMS)
+
+    hard_exclusions.update({
         "biology",
         "biological",
         "biomedical",
@@ -375,16 +372,23 @@ def is_linguistics_related(work, query_units):
         "tumor",
         "tumour",
         "molecular",
+        "living system",
         "living systems",
         "multicellular",
         "bone",
         "bones",
+        "blood vessel",
         "blood vessels",
         "tissue engineering",
         "bioartificial",
-    }
+        "organism",
+        "organisms",
+        "biometric",
+        "imaging technique",
+        "imaging techniques",
+    })
 
-    if contains_any_term(combined_text, non_linguistic_terms):
+    if contains_any_term(combined_text, hard_exclusions):
         return False
 
     # Strong linguistics signals.
@@ -408,6 +412,10 @@ def is_linguistics_related(work, query_units):
         "phonetic",
         "morpheme",
         "morphemes",
+        "morphosyntax",
+        "morphosyntactic",
+        "morphophonology",
+        "morphophonological",
         "affix",
         "affixes",
         "suffix",
@@ -453,30 +461,18 @@ def is_linguistics_related(work, query_units):
         "bantu",
         "indo-european",
         "trans-himalayan",
-        "presupposition",
+        "sino-tibetan",
+        "austronesian",
+        "afroasiatic",
+        "uralic",
+        "dravidian",
     }
 
     if not contains_any_term(combined_text, strong_linguistics_terms):
         return False
 
     return True
-    
-def build_linguistic_signal_terms():
-    """
-    Build a broad set of positive linguistics signals.
 
-    This includes:
-    - general domain terms
-    - specialized one-word terms
-    - known multi-word collocations
-    """
-    signal_terms = set()
-
-    signal_terms.update(LINGUISTIC_DOMAIN_TERMS)
-    signal_terms.update(SPECIALIZED_LINGUISTIC_TERMS)
-    signal_terms.update(KNOWN_COLLOCATIONS)
-
-    return signal_terms
 
 def unit_matches_text(unit, text):
     """Return True if a query unit or one of its variants appears in text."""
@@ -484,8 +480,7 @@ def unit_matches_text(unit, text):
     variants = get_unit_variants(unit)
 
     for variant in variants:
-        variant = normalize_text(variant)
-        if variant and variant in text:
+        if term_in_text(variant, text):
             return True
 
     return False
@@ -532,14 +527,7 @@ def is_golden_catch(work, query_units):
     """
     A Golden Catch is a direct match.
 
-    The abstract must include all meaningful query units, allowing simple variants.
-
-    Example:
-    Query: Turkish ideophones under negation
-    Query units: turkish, ideophones, negation
-
-    Golden Catch:
-    The abstract includes Turkish, ideophone/ideophones, and negation/negative.
+    The abstract must include all meaningful query units.
     """
     _, abstract, _ = get_work_text_fields(work)
 
@@ -554,10 +542,6 @@ def is_golden_catch(work, query_units):
 def is_nearby_find(work, query_units):
     """
     A Nearby Find is related, but not a full direct match.
-
-    The abstract must include some meaningful overlap:
-    - one match for one-unit niche queries
-    - at least two matches for multi-unit queries
 
     Golden Catches are excluded from Nearby Finds.
     """
@@ -632,7 +616,7 @@ def search_openalex(query):
     """
     url = "https://api.openalex.org/works"
 
-    # Add linguistics directly to the query so OpenAlex starts in the right domain.
+    # First narrow the search to linguistics.
     linguistics_query = f"{query} linguistics"
 
     params = {
@@ -648,13 +632,14 @@ def search_openalex(query):
     data = response.json()
     works = data.get("results", [])
 
-    query_units = extract_query_units(query)
+    raw_query_units = extract_query_units(query)
+    query_units = correct_query_units(raw_query_units)
 
     golden_catches = []
     nearby_finds = []
 
     for work in works:
-        # Hidden barrier: only linguistics works can pass.
+        # Hidden first barrier: only linguistics works can pass.
         if not is_linguistics_related(work, query_units):
             continue
 
@@ -686,6 +671,7 @@ def search_openalex(query):
 
     return golden_catches[:10], nearby_finds[:10]
 
+
 # -----------------------------
 # External source helpers
 # -----------------------------
@@ -695,12 +681,10 @@ def google_scholar_search_url(query):
     Create a more constrained Google Scholar search link.
 
     This does not filter Google Scholar results inside the app.
-    It only sends Google Scholar a smarter query by:
-    - preserving known collocations as quoted phrases
-    - adding a linguistics-domain cue
-    - excluding common non-linguistic domains such as biology and medicine
+    It only sends Google Scholar a smarter query.
     """
-    units = extract_query_units(query)
+    raw_units = extract_query_units(query)
+    units = correct_query_units(raw_units)
 
     scholar_terms = []
 
@@ -710,11 +694,8 @@ def google_scholar_search_url(query):
         else:
             scholar_terms.append(unit)
 
-    # Add a domain cue so Scholar knows this is about linguistics.
     scholar_terms.append("linguistics")
 
-    # These are query-level exclusions.
-    # They help reduce biology/medicine false positives like stem-cell morphology.
     exclusions = [
         "-biology",
         "-medicine",
@@ -735,6 +716,11 @@ def google_scholar_search_url(query):
         "-cellular",
         '-"cell proliferation"',
         '-"cell differentiation"',
+        '-"living systems"',
+        "-tissue",
+        "-organ",
+        "-physiology",
+        "-anatomy",
     ]
 
     scholar_query = " ".join(scholar_terms + exclusions)
@@ -745,13 +731,9 @@ def google_scholar_search_url(query):
 def simplified_lingbuzz_query(query):
     """
     Create a shorter LingBuzz query using linguistic search units.
-
-    LingBuzz can be noisy with long searches, so this:
-    - preserves known collocations as phrases
-    - removes stopwords through extract_query_units()
-    - keeps only the first few units
     """
-    units = extract_query_units(query)
+    raw_units = extract_query_units(query)
+    units = correct_query_units(raw_units)
 
     lingbuzz_terms = []
 
@@ -761,18 +743,15 @@ def simplified_lingbuzz_query(query):
         else:
             lingbuzz_terms.append(unit)
 
-    # Keep only the first 4 units so the search does not become too brittle.
     return " ".join(lingbuzz_terms[:4])
 
 
 def lingbuzz_search_url(query):
-    """
-    Create a simplified LingBuzz search link.
-
-    LingBuzz results are external and are not filtered inside the app.
-    """
+    """Create a simplified LingBuzz search link."""
     simple_query = simplified_lingbuzz_query(query)
     return f"https://lingbuzz.net/lingbuzz/search?q={quote_plus(simple_query)}"
+
+
 # -----------------------------
 # Display helpers
 # -----------------------------
@@ -855,6 +834,7 @@ def display_work(work, index):
 
         st.divider()
 
+
 # -----------------------------
 # User input
 # -----------------------------
@@ -865,9 +845,7 @@ with st.form("search_form"):
         placeholder="e.g. Turkish ideophones under negation"
     )
 
-    st.caption(
-        "You can type natural research phrases. "
-    )
+    st.caption("You can type natural research phrases.")
 
     submitted = st.form_submit_button("Search")
 
@@ -885,13 +863,19 @@ if submitted and query:
         )
         st.stop()
 
-    query_units = extract_query_units(query)
+    raw_query_units = extract_query_units(query)
+    query_units = correct_query_units(raw_query_units)
 
     if not query_units:
         st.warning("Please enter more specific keywords.")
         st.stop()
 
     st.markdown("## Results")
+
+    if raw_query_units != query_units:
+        with st.expander("Typo correction"):
+            st.write("The app interpreted your search as:")
+            st.code(", ".join(query_units))
 
     # -----------------------------
     # External source cards
@@ -904,44 +888,22 @@ if submitted and query:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(
-            f"""
-            <div style="
-                border: 1px solid #ddd;
-                border-radius: 12px;
-                padding: 1rem;
-                background-color: #f8f9fa;
-                min-height: 150px;
-            ">
-                <h4>Google Scholar</h4>
-                <p>Broader scholarly search across books, articles, and citations.</p>
-                <a href="{google_scholar_search_url(query)}" target="_blank">
-                    Search Google Scholar
-                </a>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.markdown("#### Google Scholar")
+        st.write(
+            "Manual follow-up search. External results are not filtered by this app."
+        )
+        st.link_button(
+            "Search Google Scholar",
+            google_scholar_search_url(query)
         )
 
     with col2:
-        st.markdown(
-            f"""
-            <div style="
-                border: 1px solid #ddd;
-                border-radius: 12px;
-                padding: 1rem;
-                background-color: #f8f9fa;
-                min-height: 150px;
-            ">
-                <h4>LingBuzz</h4>
-                <p>Manual follow-up search using a simplified query:</p>
-                <p><code>{simple_lingbuzz}</code></p>
-                <a href="{lingbuzz_search_url(query)}" target="_blank">
-                    Search LingBuzz
-                </a>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.markdown("#### LingBuzz")
+        st.write("Manual follow-up search using a simplified query:")
+        st.code(simple_lingbuzz)
+        st.link_button(
+            "Search LingBuzz",
+            lingbuzz_search_url(query)
         )
 
     st.markdown("---")
@@ -950,7 +912,7 @@ if submitted and query:
     # OpenAlex search
     # -----------------------------
 
-    with st.spinner("Searching OpenAlex and removing non-linguistics results..."):
+    with st.spinner("Searching linguistics literature..."):
         try:
             golden_catches, nearby_finds = search_openalex(query)
         except Exception as error:
