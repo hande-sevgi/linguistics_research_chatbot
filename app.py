@@ -679,19 +679,21 @@ def display_work(work, index):
 
         st.divider()
 
-
 # -----------------------------
 # User input
 # -----------------------------
 
-query = st.text_input(
-    "What are you curious about?",
-    placeholder="e.g. Turkish ideophones under negation"
-)
+with st.form("search_form"):
+    query = st.text_input(
+        "What are you curious about?",
+        placeholder="e.g. Turkish ideophones under negation"
+    )
 
-st.caption(
-    "You can type natural research phrases."
-)
+    st.caption(
+        "You can type natural research phrases. "
+    )
+
+    submitted = st.form_submit_button("Search")
 
 
 # -----------------------------
