@@ -4,6 +4,13 @@ from urllib.parse import quote_plus
 import requests
 import streamlit as st
 
+from linguistics-terms import (
+    BROAD_SINGLE_TERMS,
+    STOPWORDS,
+    SPECIALIZED_LINGUISTIC_TERMS,
+    PHRASE_TERMS,
+    TERM_VARIANTS,
+)
 
 # -----------------------------
 # Page setup
