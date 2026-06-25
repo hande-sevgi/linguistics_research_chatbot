@@ -1,3 +1,4 @@
+"""
 Controlled vocabulary for the literature-discovery app.
 
 This file keeps linguistics-specific vocabulary separate from app.py.
