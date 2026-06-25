@@ -17,9 +17,8 @@ st.set_page_config(
 
 st.title("What Have Others Found Before Me?")
 st.caption(
-    "A linguistics literature-discovery tool. "
-    "Search open scholarly metadata from OpenAlex, then continue the search "
-    "in Google Scholar or LingBuzz."
+    "A literature-discovery tool for finding close matches, nearby work, "
+    "and possible research gaps."
 )
 
 
@@ -30,188 +29,15 @@ st.caption(
 BROAD_SINGLE_TERMS = {
     "syntax", "semantics", "phonology", "morphology", "pragmatics",
     "linguistics", "language", "grammar", "discourse", "meaning",
-    "words", "sentences", "speech", "communication"
+    "words", "sentences", "speech", "communication", "acquisition",
+    "variation", "typology"
 }
 
 STOPWORDS = {
     "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
     "with", "by", "from", "about", "into", "across", "under", "over",
-    "between", "among", "through", "at", "as", "is", "are", "when",
-    "while", "within", "without", "during", "their", "its", "this",
-    "that", "these", "those"
-}
-
-SUBFIELD_TERMS = {
-    "syntax", "syntactic",
-    "semantics", "semantic",
-    "pragmatics", "pragmatic",
-    "phonology", "phonological",
-    "phonetics", "phonetic",
-    "morphology", "morphological",
-    "morphosyntax", "morphosyntactic",
-    "sociolinguistics", "sociolinguistic",
-    "psycholinguistics", "psycholinguistic",
-    "typology", "typological",
-    "fieldwork",
-    "computational", "nlp"
-}
-
-LANGUAGE_OR_REGION_TERMS = {
-    "turkish", "english", "german", "french", "spanish", "italian",
-    "arabic", "japanese", "korean", "chinese", "russian", "greek",
-    "hebrew", "hindi", "persian", "swahili", "yoruba", "zulu",
-    "african", "european", "asian", "austronesian", "bantu",
-    "indo-european", "romance", "slavic", "semitic", "turkic",
-    "native", "indigenous", "languages", "language"
-}
-
-LINGUISTICS_SIGNAL_TERMS = {
-    "linguistics", "linguistic",
-    "language", "languages",
-    "grammar", "grammatical",
-    "syntax", "syntactic",
-    "semantics", "semantic",
-    "pragmatics", "pragmatic",
-    "phonology", "phonological",
-    "phonetics", "phonetic",
-    "morphology", "morphological",
-    "morphosyntax", "morphosyntactic",
-    "discourse", "utterance", "utterances",
-    "word", "words", "word order",
-    "sentence", "sentences",
-    "clitic", "clitics",
-    "negation", "negative polarity",
-    "adverb", "adverbial",
-    "focus", "information structure",
-    "topic", "topic marking",
-    "sign language", "sign languages",
-    "gesture", "gestures",
-    "modality",
-    "typology", "typological",
-    "fieldwork", "elicitation",
-    "language documentation",
-    "bilingual", "bilingualism",
-    "multilingual", "multilingualism",
-    "corpus linguistics",
-    "language acquisition",
-    "language processing",
-    "sociolinguistics", "sociolinguistic",
-    "psycholinguistics", "psycholinguistic",
-    "computational linguistics",
-    "natural language processing",
-    "translation",
-    "anaphora",
-    "agreement",
-    "case marking",
-    "tense",
-    "aspect",
-    "evidential", "evidentiality",
-    "classifier", "classifiers",
-    "noun phrase",
-    "verb phrase",
-    "relative clause",
-    "ideophone", "ideophones",
-    "demonstrative", "demonstratives",
-    "deixis", "deictic",
-    "morpheme", "morphemes",
-    "affix", "suffix", "prefix",
-    "inflection", "derivation",
-    "language family",
-    "dialect", "dialects",
-    "code switching", "codeswitching"
-}
-
-EXCLUDED_NON_LINGUISTIC_TERMS = {
-    # Engineering / construction / navigation
-    "construction project management",
-    "construction firms",
-    "construction industry",
-    "construction market",
-    "project management",
-    "civil engineering",
-    "engineering",
-    "inertial sensor",
-    "inertial sensors",
-    "position estimation",
-    "orientation estimation",
-    "navigation",
-    "robotics",
-    "mechanical engineering",
-    "electrical engineering",
-    "control systems",
-
-    # Business / economics / management
-    "business",
-    "management",
-    "economics",
-    "finance",
-    "market",
-    "markets",
-    "competitive",
-    "firm",
-    "firms",
-    "industry",
-    "organizational",
-    "strategy",
-    "international markets",
-
-    # Biology / medicine
-    "biology",
-    "biological",
-    "cell",
-    "cells",
-    "cellular",
-    "molecular",
-    "genetics",
-    "genome",
-    "protein",
-    "proteins",
-    "plant",
-    "plants",
-    "animal",
-    "animals",
-    "species",
-    "medical",
-    "medicine",
-    "clinical",
-    "anatomy",
-    "physiology",
-    "disease",
-    "patient",
-    "patients",
-    "neuron",
-    "neural",
-    "brain",
-    "cancer",
-    "tumor",
-    "bacteria",
-    "microbial",
-    "soil",
-    "leaf",
-    "leaves",
-    "root",
-    "roots",
-    "organism",
-    "organisms",
-    "tissue",
-    "tissues",
-    "specimen",
-    "specimens",
-    "embryo",
-    "embryonic",
-
-    # Materials / physical sciences
-    "material",
-    "materials",
-    "materials science",
-    "crystal",
-    "crystals",
-    "polymer",
-    "surface",
-    "nanoparticle",
-    "nanoparticles",
-    "chemical",
-    "chemistry"
+    "between", "among", "through", "at", "as", "is", "are", "was",
+    "were", "be", "been", "being", "this", "that", "these", "those"
 }
 
 
@@ -225,6 +51,7 @@ def reconstruct_abstract(inverted_index):
         return ""
 
     words = []
+
     for word, positions in inverted_index.items():
         for pos in positions:
             words.append((pos, word))
@@ -240,383 +67,210 @@ def normalize_text(text):
     return text.strip()
 
 
-def term_variants(term):
+def extract_query_units(query):
     """
-    Create simple singular/plural variants.
+    Extract meaningful search units from the query.
 
-    This helps match ideophone/ideophones, clitic/clitics, etc.
-    """
-    variants = {term}
+    Quoted phrases are kept as phrases:
+    "under negation" -> under negation
 
-    if term.endswith("ies") and len(term) > 4:
-        variants.add(term[:-3] + "y")
+    Remaining unquoted words are tokenized, with stopwords removed.
 
-    if term.endswith("s") and len(term) > 4:
-        variants.add(term[:-1])
-    else:
-        variants.add(term + "s")
+    Example:
+    Turkish ideophones "under negation"
 
-    return variants
-
-
-def get_query_tokens(query):
-    """Return lowercase word tokens from the query."""
-    return re.findall(r"\b\w+\b", query.lower())
-
-
-def extract_content_terms(query):
-    """
-    Extract meaningful content terms from the query.
-
-    Function words such as 'under' are removed, so:
-    Turkish ideophones under negation
     becomes:
-    Turkish, ideophones, negation
-    """
-    tokens = get_query_tokens(query)
+    ["under negation", "turkish", "ideophones"]
 
-    content_terms = [
-        token for token in tokens
-        if len(token) > 2 and token not in STOPWORDS
+    The word "under" does not count separately as a keyword.
+    """
+    query = normalize_text(query)
+
+    quoted_phrases = re.findall(r'"([^"]+)"', query)
+
+    cleaned_phrases = []
+    for phrase in quoted_phrases:
+        phrase = normalize_text(phrase)
+        if phrase:
+            cleaned_phrases.append(phrase)
+
+    query_without_phrases = re.sub(r'"[^"]+"', " ", query)
+    words = re.findall(r"\b\w+\b", query_without_phrases)
+
+    keywords = [
+        word for word in words
+        if len(word) > 2 and word not in STOPWORDS
     ]
 
-    return content_terms
+    units = cleaned_phrases + keywords
 
+    unique_units = []
+    for unit in units:
+        if unit not in unique_units:
+            unique_units.append(unit)
 
-def classify_query_terms(query):
-    """
-    Classify user query terms into:
-    - phenomenon terms: main linguistic objects/events/constructions
-    - language terms: languages, families, regions
-    - subfield terms: syntax, phonology, semantics, etc.
-    """
-    content_terms = extract_content_terms(query)
-
-    language_terms = []
-    subfield_terms = []
-    phenomenon_terms = []
-
-    for term in content_terms:
-        if term in LANGUAGE_OR_REGION_TERMS:
-            language_terms.append(term)
-        elif term in SUBFIELD_TERMS:
-            subfield_terms.append(term)
-        else:
-            phenomenon_terms.append(term)
-
-    return {
-        "content_terms": content_terms,
-        "phenomenon_terms": phenomenon_terms,
-        "language_terms": language_terms,
-        "subfield_terms": subfield_terms,
-    }
-
-
-def infer_priority_phrases(query):
-    """
-    Build ranking phrases in priority order.
-
-    Highest priority:
-    - phenomenon + phenomenon combinations
-
-    Medium priority:
-    - language/context + phenomenon combinations
-
-    Lowest priority:
-    - adjacent content phrases
-    """
-    classified = classify_query_terms(query)
-
-    content_terms = classified["content_terms"]
-    phenomenon_terms = classified["phenomenon_terms"]
-    language_terms = classified["language_terms"]
-
-    phrases = []
-
-    # Highest priority: phenomenon + phenomenon combinations.
-    for i in range(len(phenomenon_terms)):
-        for j in range(i + 1, len(phenomenon_terms)):
-            phrases.append(
-                {
-                    "phrase": f"{phenomenon_terms[i]} {phenomenon_terms[j]}",
-                    "weight": 16,
-                }
-            )
-            phrases.append(
-                {
-                    "phrase": f"{phenomenon_terms[j]} {phenomenon_terms[i]}",
-                    "weight": 16,
-                }
-            )
-
-    # Medium priority: language/context + phenomenon combinations.
-    for language in language_terms:
-        for phenomenon in phenomenon_terms:
-            phrases.append(
-                {
-                    "phrase": f"{language} {phenomenon}",
-                    "weight": 7,
-                }
-            )
-            phrases.append(
-                {
-                    "phrase": f"{phenomenon} {language}",
-                    "weight": 7,
-                }
-            )
-
-    # Lowest priority: adjacent content terms.
-    for i in range(len(content_terms) - 1):
-        phrases.append(
-            {
-                "phrase": f"{content_terms[i]} {content_terms[i + 1]}",
-                "weight": 4,
-            }
-        )
-
-    return phrases
+    return unique_units
 
 
 def is_query_too_broad(query):
     """
-    Reject broad or ambiguous one-word queries like 'syntax' or 'morphology',
-    but allow more specific one-word queries like 'clitics' or 'ideophones'.
+    Reject broad one-word queries like 'syntax',
+    but allow more specific one-word queries like 'clitics'.
     """
-    content_terms = extract_content_terms(query)
+    units = extract_query_units(query)
 
-    if len(content_terms) == 1 and content_terms[0] in BROAD_SINGLE_TERMS:
+    if len(units) == 1 and units[0] in BROAD_SINGLE_TERMS:
         return True
 
     return False
 
 
-def unit_in_text(unit, text):
-    """
-    Return True if a term or phrase appears in text.
+def get_work_text_fields(work):
+    """Return normalized title, abstract, and OpenAlex concept text."""
+    title = normalize_text(work.get("title") or "")
 
-    For single terms, simple singular/plural variants are allowed.
-    For phrases, the phrase must appear directly.
-    """
-    unit = normalize_text(unit)
-    text = normalize_text(text)
+    abstract = normalize_text(
+        reconstruct_abstract(work.get("abstract_inverted_index"))
+    )
 
-    if " " in unit:
-        return unit in text
+    concepts = work.get("concepts") or []
+    concept_text = " ".join(
+        concept.get("display_name", "") for concept in concepts
+    )
+    concept_text = normalize_text(concept_text)
 
-    return any(variant in text for variant in term_variants(unit))
+    return title, abstract, concept_text
 
 
-def count_content_term_matches(text, terms):
-    """Count how many terms appear in text."""
-    text = normalize_text(text)
-
+def count_unit_matches(text, query_units):
+    """Count how many query units appear in a text field."""
     count = 0
-    for term in terms:
-        if unit_in_text(term, text):
+
+    for unit in query_units:
+        if unit in text:
             count += 1
 
     return count
 
 
-def get_openalex_topic_text(work):
-    """Collect OpenAlex topic/category metadata into one searchable string."""
-    primary_topic = work.get("primary_topic") or {}
-
-    topic_name = primary_topic.get("display_name") or ""
-
-    field = primary_topic.get("field") or {}
-    field_name = field.get("display_name") or ""
-
-    subfield = primary_topic.get("subfield") or {}
-    subfield_name = subfield.get("display_name") or ""
-
-    domain = primary_topic.get("domain") or {}
-    domain_name = domain.get("display_name") or ""
-
-    return normalize_text(
-        " ".join([topic_name, field_name, subfield_name, domain_name])
-    )
+def get_matched_units(text, query_units):
+    """Return the query units that appear in a text field."""
+    return [unit for unit in query_units if unit in text]
 
 
-def get_concept_text(work):
-    """Collect OpenAlex concept metadata into one searchable string."""
-    concepts = work.get("concepts") or []
-
-    concept_names = [
-        concept.get("display_name", "")
-        for concept in concepts
-    ]
-
-    return normalize_text(" ".join(concept_names))
-
-
-def get_work_searchable_text(work):
-    """Collect title, abstract, topic, and concept text."""
-    title = work.get("title") or ""
-    abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
-    topic_text = get_openalex_topic_text(work)
-    concept_text = get_concept_text(work)
-
-    return normalize_text(
-        " ".join([title, abstract, topic_text, concept_text])
-    )
-
-
-def has_linguistics_signal(work):
+def minimum_required_abstract_matches(query_units):
     """
-    Return True if the work has a clear language/linguistics signal.
-
-    This checks title, abstract, OpenAlex topic metadata, and concepts.
+    For a niche one-word query like 'clitics', require one abstract match.
+    For multi-unit queries, require at least two abstract matches.
     """
-    searchable_text = get_work_searchable_text(work)
+    if len(query_units) == 1:
+        return 1
 
-    return any(term in searchable_text for term in LINGUISTICS_SIGNAL_TERMS)
+    return 2
 
 
-def is_excluded_non_linguistic_work(work):
+def is_golden_catch(work, query_units):
     """
-    Return True if the work clearly belongs to a non-linguistic domain.
+    A Golden Catch is a strong match.
+
+    The abstract must include all meaningful query units.
+
+    Example query:
+    Turkish ideophones "under negation"
+
+    A Golden Catch should include:
+    - Turkish
+    - ideophones
+    - under negation
+
+    in the abstract.
     """
-    searchable_text = get_work_searchable_text(work)
+    _, abstract, _ = get_work_text_fields(work)
 
-    return any(term in searchable_text for term in EXCLUDED_NON_LINGUISTIC_TERMS)
-
-
-def is_linguistics_related(work):
-    """
-    Hard domain gate.
-
-    This is what makes the app different from OpenAlex:
-    OpenAlex is general; this tool only shows linguistics-related works.
-    """
-    if is_excluded_non_linguistic_work(work):
+    if not abstract:
         return False
 
-    if has_linguistics_signal(work):
-        return True
+    abstract_matches = count_unit_matches(abstract, query_units)
 
-    return False
+    return abstract_matches == len(query_units)
 
 
-def relevance_score(work, query):
+def is_nearby_find(work, query_units):
     """
-    Score results using a hierarchy:
+    A Nearby Find is related, but not a perfect match.
 
-    1. Phenomenon combinations receive the highest weight.
-    2. Individual phenomenon terms receive high weight.
-    3. Language/family/region terms receive medium weight.
-    4. Subfield terms receive low weight.
-    5. Linguistics signal helps preserve the narrow domain.
+    The abstract must include:
+    - one match for one-unit niche queries
+    - at least two matches for multi-unit queries
     """
-    classified = classify_query_terms(query)
+    _, abstract, _ = get_work_text_fields(work)
 
-    phenomenon_terms = classified["phenomenon_terms"]
-    language_terms = classified["language_terms"]
-    subfield_terms = classified["subfield_terms"]
-    content_terms = classified["content_terms"]
+    if not abstract:
+        return False
 
-    priority_phrases = infer_priority_phrases(query)
+    required_matches = minimum_required_abstract_matches(query_units)
+    abstract_matches = count_unit_matches(abstract, query_units)
 
-    title = normalize_text(work.get("title") or "")
-    abstract = normalize_text(
-        reconstruct_abstract(work.get("abstract_inverted_index"))
-    )
-    topic_text = get_openalex_topic_text(work)
-    concept_text = get_concept_text(work)
+    return abstract_matches >= required_matches
 
-    full_text = " ".join([title, abstract, topic_text, concept_text])
+
+def relevance_score(work, query_units):
+    """
+    Score how central the user's keywords or phrases are to the work.
+
+    Title matches matter most.
+    Abstract matches matter next.
+    OpenAlex concept matches also help.
+    Citation count is only a small bonus.
+    """
+    title, abstract, concept_text = get_work_text_fields(work)
 
     score = 0
 
-    # 1. Highest priority: phenomenon combinations.
-    for item in priority_phrases:
-        phrase = item["phrase"]
-        weight = item["weight"]
-
-        if phrase in title:
-            score += weight * 2
-        if phrase in abstract:
-            score += weight
-        if phrase in topic_text or phrase in concept_text:
-            score += weight / 2
-
-    # 2. Individual phenomenon terms.
-    for term in phenomenon_terms:
-        if unit_in_text(term, title):
-            score += 14
-        if unit_in_text(term, abstract):
-            score += 10
-        if unit_in_text(term, topic_text):
-            score += 6
-        if unit_in_text(term, concept_text):
-            score += 4
-
-    # 3. Language/family/region terms.
-    for term in language_terms:
-        if unit_in_text(term, title):
+    for unit in query_units:
+        if unit in title:
             score += 5
-        if unit_in_text(term, abstract):
-            score += 4
-        if unit_in_text(term, topic_text):
-            score += 2
-        if unit_in_text(term, concept_text):
-            score += 1
-
-    # 4. Subfield terms: lightest weight.
-    for term in subfield_terms:
-        if unit_in_text(term, title):
+        if unit in abstract:
             score += 3
-        if unit_in_text(term, abstract):
+        if unit in concept_text:
             score += 2
-        if unit_in_text(term, topic_text):
-            score += 1
-        if unit_in_text(term, concept_text):
-            score += 1
 
-    # Require at least some connection to the phenomenon when one is present.
-    phenomenon_matches = count_content_term_matches(full_text, phenomenon_terms)
+    title_matches = count_unit_matches(title, query_units)
+    abstract_matches = count_unit_matches(abstract, query_units)
+    concept_matches = count_unit_matches(concept_text, query_units)
 
-    if phenomenon_terms and phenomenon_matches == 0:
-        score -= 40
+    if title_matches >= 2:
+        score += 5
 
-    # Reward multiple phenomenon matches.
-    if phenomenon_matches >= 2:
-        score += 18
-    elif phenomenon_matches == 1:
-        score += 8
+    if abstract_matches >= 2:
+        score += 5
 
-    # Do not let language/context-only papers dominate.
-    language_matches = count_content_term_matches(full_text, language_terms)
+    if abstract_matches == len(query_units):
+        score += 10
 
-    if phenomenon_terms and language_matches > 0 and phenomenon_matches == 0:
-        score -= 30
-
-    # Preserve linguistics domain.
-    if has_linguistics_signal(work):
-        score += 8
+    if concept_matches >= 2:
+        score += 3
 
     cited_by = work.get("cited_by_count", 0) or 0
     score += min(cited_by / 100, 3)
 
-    # Small bonus if many original content terms appear somewhere.
-    content_matches = count_content_term_matches(full_text, content_terms)
-    score += min(content_matches * 2, 8)
-
     return score
 
 
-def search_openalex_relevant(query, max_results=25):
+def search_openalex(query):
     """
-    Search OpenAlex broadly, but show only linguistics-related works.
+    Search OpenAlex and classify works into:
+    - Golden Catch
+    - Nearby Finds
 
-    This keeps linguistics as the narrow domain while letting the user's
-    phenomenon drive the ranking.
+    If no Golden Catch is found, the app suggests that this may be
+    a research gap or that different terminology may be needed.
     """
     url = "https://api.openalex.org/works"
 
     params = {
         "search": query,
-        "per-page": 200,
+        "per-page": 100,
         "sort": "relevance_score:desc",
         "mailto": "handesevgi@g.harvard.edu"
     }
@@ -627,44 +281,71 @@ def search_openalex_relevant(query, max_results=25):
     data = response.json()
     works = data.get("results", [])
 
-    scored_works = []
+    query_units = extract_query_units(query)
+
+    golden_catches = []
+    nearby_finds = []
 
     for work in works:
-        # Hard linguistics-only gate.
-        if not is_linguistics_related(work):
-            continue
+        score = relevance_score(work, query_units)
+        work["custom_relevance_score"] = score
 
-        score = relevance_score(work, query)
+        title, abstract, concept_text = get_work_text_fields(work)
 
-        if score > 0:
-            work["custom_relevance_score"] = score
-            scored_works.append(work)
+        work["matched_in_abstract"] = get_matched_units(abstract, query_units)
+        work["matched_in_title"] = get_matched_units(title, query_units)
+        work["matched_in_concepts"] = get_matched_units(concept_text, query_units)
 
-    scored_works = sorted(
-        scored_works,
-        key=lambda item: item["custom_relevance_score"],
+        if is_golden_catch(work, query_units):
+            golden_catches.append(work)
+        elif is_nearby_find(work, query_units):
+            nearby_finds.append(work)
+
+    golden_catches = sorted(
+        golden_catches,
+        key=lambda work: work["custom_relevance_score"],
         reverse=True
     )
 
-    return scored_works[:max_results]
+    nearby_finds = sorted(
+        nearby_finds,
+        key=lambda work: work["custom_relevance_score"],
+        reverse=True
+    )
+
+    return golden_catches[:10], nearby_finds[:10]
 
 
 def google_scholar_search_url(query):
-    """Create a Google Scholar search link."""
-    scholar_query = f"{query} linguistics"
-    return f"https://scholar.google.com/scholar?q={quote_plus(scholar_query)}"
+    """Create a Google Scholar search link for the user's query."""
+    return f"https://scholar.google.com/scholar?q={quote_plus(query)}"
 
 
 def simplified_lingbuzz_query(query):
     """
     Create a shorter LingBuzz query using content words only.
 
-    LingBuzz search can be noisy with long queries, so this keeps
-    the search narrower and more manual.
+    LingBuzz can return noisy results with long phrase-like searches,
+    so this keeps only the first few content words.
     """
-    content_terms = extract_content_terms(query)
+    units = extract_query_units(query)
 
-    return " ".join(content_terms[:3])
+    content_words = []
+
+    for unit in units:
+        words = re.findall(r"\b\w+\b", unit.lower())
+
+        for word in words:
+            if word not in STOPWORDS and len(word) > 2:
+                content_words.append(word)
+
+    unique_words = []
+
+    for word in content_words:
+        if word not in unique_words:
+            unique_words.append(word)
+
+    return " ".join(unique_words[:3])
 
 
 def lingbuzz_search_url(query):
@@ -681,6 +362,7 @@ def get_author_text(work, max_authors=4):
     for authorship in authorships[:max_authors]:
         author = authorship.get("author", {})
         name = author.get("display_name")
+
         if name:
             authors.append(name)
 
@@ -701,15 +383,54 @@ def get_work_link(work):
     return doi or landing_page_url or openalex_url
 
 
-def get_topic_label(work):
-    """Return the OpenAlex topic label, if available."""
-    primary_topic = work.get("primary_topic") or {}
-    topic_name = primary_topic.get("display_name")
+def display_work(work, index):
+    """Display one OpenAlex work."""
+    title = work.get("title") or "Untitled"
+    year = work.get("publication_year") or "n.d."
+    cited_by = work.get("cited_by_count", 0)
+    score = work.get("custom_relevance_score", 0)
+    author_text = get_author_text(work)
+    link = get_work_link(work)
+    abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
 
-    if topic_name:
-        return topic_name
+    matched_in_abstract = work.get("matched_in_abstract", [])
+    matched_in_title = work.get("matched_in_title", [])
+    matched_in_concepts = work.get("matched_in_concepts", [])
 
-    return "No OpenAlex topic label"
+    with st.container():
+        st.markdown(f"#### {index}. {title}")
+        st.markdown(f"**Authors:** {author_text}")
+        st.markdown(
+            f"**Year:** {year} | **Cited by:** {cited_by} | "
+            f"**Relevance score:** {score:.2f}"
+        )
+
+        if matched_in_abstract:
+            st.markdown(
+                "**Matched in abstract:** "
+                + ", ".join(f"`{unit}`" for unit in matched_in_abstract)
+            )
+
+        if matched_in_title:
+            st.markdown(
+                "**Matched in title:** "
+                + ", ".join(f"`{unit}`" for unit in matched_in_title)
+            )
+
+        if matched_in_concepts:
+            st.markdown(
+                "**Matched in OpenAlex concepts:** "
+                + ", ".join(f"`{unit}`" for unit in matched_in_concepts)
+            )
+
+        if link:
+            st.markdown(f"[Open work]({link})")
+
+        if abstract:
+            with st.expander("Abstract"):
+                st.write(abstract)
+
+        st.divider()
 
 
 # -----------------------------
@@ -717,8 +438,13 @@ def get_topic_label(work):
 # -----------------------------
 
 query = st.text_input(
-    "What do you want to research?",
-    placeholder="e.g. Turkish ideophones under negation"
+    "What are you trying to find?",
+    placeholder='e.g. Turkish ideophones "under negation"'
+)
+
+st.caption(
+    'Tip: Put phrases in quotation marks, for example: '
+    '`Turkish ideophones "under negation"`'
 )
 
 
@@ -730,46 +456,61 @@ if st.button("Search") and query:
     if is_query_too_broad(query):
         st.warning(
             "Please provide more specific information. For example, instead of "
-            "'syntax' or 'morphology', try 'Turkish word order', "
-            "'distributed morphology', 'clitics in syntax', or "
-            "'ideophones under negation'."
+            "'syntax', try 'clitics in syntax', 'word order in Turkish', or "
+            "'syntax of negation'."
         )
         st.stop()
 
-    content_terms = extract_content_terms(query)
+    query_units = extract_query_units(query)
 
-    if not content_terms:
+    if not query_units:
         st.warning("Please enter more specific keywords.")
         st.stop()
 
     st.markdown("## Results")
 
     # -----------------------------
-    # Source cards
+    # Search summary
     # -----------------------------
 
-    st.markdown("### Search across sources")
+    st.markdown("### Search units")
+    st.write(
+        "The app will look for these meaningful keywords or phrases. "
+        "Stopwords like `under` do not count separately."
+    )
+    st.code(", ".join(query_units))
 
-    col1, col2, col3 = st.columns(3)
+    st.markdown("---")
+
+    # -----------------------------
+    # External source cards
+    # -----------------------------
+
+    st.markdown("### Continue the search elsewhere")
+
+    simple_lingbuzz = simplified_lingbuzz_query(query)
+
+    col1, col2 = st.columns(2)
 
     with col1:
         st.markdown(
-            """
+            f"""
             <div style="
                 border: 1px solid #ddd;
                 border-radius: 12px;
                 padding: 1rem;
                 background-color: #f8f9fa;
-                min-height: 165px;
+                min-height: 150px;
             ">
-                <h4>OpenAlex</h4>
-                <p>Linguistics-only ranked results are shown below.</p>
+                <h4>Google Scholar</h4>
+                <p>Broader scholarly search across books, articles, and citations.</p>
+                <a href="{google_scholar_search_url(query)}" target="_blank">
+                    Search Google Scholar
+                </a>
             </div>
             """,
             unsafe_allow_html=True
         )
-
-    simple_lingbuzz = simplified_lingbuzz_query(query)
 
     with col2:
         st.markdown(
@@ -779,10 +520,10 @@ if st.button("Search") and query:
                 border-radius: 12px;
                 padding: 1rem;
                 background-color: #f8f9fa;
-                min-height: 165px;
+                min-height: 150px;
             ">
                 <h4>LingBuzz</h4>
-                <p>Manual follow-up search using:</p>
+                <p>Manual follow-up search using a simplified query:</p>
                 <p><code>{simple_lingbuzz}</code></p>
                 <a href="{lingbuzz_search_url(query)}" target="_blank">
                     Search LingBuzz
@@ -792,77 +533,57 @@ if st.button("Search") and query:
             unsafe_allow_html=True
         )
 
-    with col3:
-        st.markdown(
-            f"""
-            <div style="
-                border: 1px solid #ddd;
-                border-radius: 12px;
-                padding: 1rem;
-                background-color: #f8f9fa;
-                min-height: 165px;
-            ">
-                <h4>Google Scholar</h4>
-                <p>Broader scholarly search with a linguistics bias.</p>
-                <a href="{google_scholar_search_url(query)}" target="_blank">
-                    Search Google Scholar
-                </a>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
     st.markdown("---")
 
     # -----------------------------
-    # OpenAlex results
+    # OpenAlex search
     # -----------------------------
 
     with st.spinner("Searching OpenAlex..."):
         try:
-            works = search_openalex_relevant(
-                query,
-                max_results=25
-            )
+            golden_catches, nearby_finds = search_openalex(query)
         except Exception as error:
             st.error(f"OpenAlex search failed: {error}")
             st.stop()
 
-    if not works:
-        st.warning(
-            "No linguistics-related OpenAlex results were found. Try a slightly "
-            "broader or more explicitly linguistic query, such as "
-            "'Turkish morphology', 'ideophones negation', "
-            "'demonstratives deixis', or 'clitics syntax'."
+    # -----------------------------
+    # Golden Catch results
+    # -----------------------------
+
+    if golden_catches:
+        st.success(
+            "Golden Catch! I found works whose abstracts include all of your "
+            "meaningful keywords or phrases."
         )
-        st.stop()
 
-    st.markdown("### Top 25 linguistics-related OpenAlex results")
+        st.markdown("### 🎣 Golden Catch")
 
-    for index, work in enumerate(works, start=1):
-        title = work.get("title") or "Untitled"
-        year = work.get("publication_year") or "n.d."
-        cited_by = work.get("cited_by_count", 0)
-        score = work.get("custom_relevance_score", 0)
-        author_text = get_author_text(work)
-        link = get_work_link(work)
-        abstract = reconstruct_abstract(work.get("abstract_inverted_index"))
-        topic_label = get_topic_label(work)
+        for index, work in enumerate(golden_catches, start=1):
+            display_work(work, index)
 
-        with st.container():
-            st.markdown(f"#### {index}. {title}")
-            st.markdown(f"**Authors:** {author_text}")
-            st.markdown(
-                f"**Year:** {year} | **Cited by:** {cited_by} | "
-                f"**Relevance score:** {score:.2f}"
-            )
-            st.markdown(f"**OpenAlex topic:** {topic_label}")
+    else:
+        st.warning(
+            "Hmm... I did not find a Golden Catch. This could be a research gap, "
+            "or the relevant work may use different terminology."
+        )
 
-            if link:
-                st.markdown(f"[Open work]({link})")
+    # -----------------------------
+    # Nearby Finds results
+    # -----------------------------
 
-            if abstract:
-                with st.expander("Abstract"):
-                    st.write(abstract)
+    if nearby_finds:
+        st.info(
+            "Nearby Finds: these works are related, but they may not include "
+            "all of your key concepts in the abstract."
+        )
 
-            st.divider()
+        st.markdown("### Nearby Finds")
+
+        for index, work in enumerate(nearby_finds, start=1):
+            display_work(work, index)
+
+    elif not golden_catches:
+        st.error(
+            "I did not find close or nearby matches in OpenAlex. Try broader terms, "
+            "singular/plural variants, or different terminology."
+        )
