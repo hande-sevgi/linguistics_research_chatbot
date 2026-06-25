@@ -312,6 +312,7 @@ KNOWN_COLLOCATIONS = {
     "speech acts",
     "speech act",
     "relative clauses",
+    "language change",
     "relative clause",
     "wh questions",
     "wh question",
