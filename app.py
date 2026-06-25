@@ -569,7 +569,7 @@ def search_openalex(query):
 
     # First narrow the search to linguistics.
    corrected_query = corrected_query_for_search(query)
-linguistics_query = f"{corrected_query} linguistics"
+    linguistics_query = f"{corrected_query} linguistics"
 
     params = {
         "search": linguistics_query,
