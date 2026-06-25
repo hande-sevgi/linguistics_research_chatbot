@@ -114,6 +114,9 @@ STOPWORDS = {
     "what were",
     "where is",
     "where are",
+    "how",
+    "what",
+    "where",
 }
 
 
