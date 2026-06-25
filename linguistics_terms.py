@@ -238,15 +238,20 @@ SPECIALIZED_LINGUISTIC_TERMS = {
     "comprehension",
 }
 
-
 # -----------------------------
 # Multi-word linguistic phrases
 # -----------------------------
 # These can help future versions of the app recognize phrase-level topics.
 # Users do not need quotation marks, but these are useful as a vocabulary list.
 
-PHRASE_TERMS = {
-    # Syntax / morphosyntax
+KNOWN_COLLOCATIONS = {
+    "discourse particle",
+    "event structure",
+    "focus particle",
+    "information structure",
+    "modal concord",
+    "scope ambiguity",
+    "semantic scope",
     "argument structure",
     "case marking",
     "complement clause",
@@ -260,30 +265,16 @@ PHRASE_TERMS = {
     "serial verb construction",
     "subject agreement",
     "switch reference",
+    "wh-movement",
+    "wh-question",
     "wh movement",
     "wh question",
-
-    # Semantics / pragmatics
-    "discourse particle",
-    "event structure",
-    "focus particle",
-    "information structure",
-    "modal concord",
-    "scope ambiguity",
-    "semantic scope",
     "speech act",
-
-    # Phonology / phonetics
     "stress assignment",
     "tone sandhi",
     "vowel harmony",
-
-    # Morphology
     "agreement marker",
     "nominal classification",
-}
-
-KNOWN_COLLOCATIONS = {
     "bare nouns",
     "bare noun",
     "negative polarity items",
