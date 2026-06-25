@@ -7,11 +7,13 @@ import streamlit as st
 from linguistics_terms import (
     BROAD_SINGLE_TERMS,
     STOPWORDS,
+    SPECIALIZED_LINGUISTIC_TERMS,
     KNOWN_COLLOCATIONS,
     TERM_VARIANTS,
     LINGUISTIC_DOMAIN_TERMS,
     NON_LINGUISTIC_EXCLUSION_TERMS,
 )
+
 
 # -----------------------------
 # Page setup
@@ -29,6 +31,7 @@ st.caption(
     "and possible research gaps."
 )
 
+
 # -----------------------------
 # Text helpers
 # -----------------------------
@@ -38,7 +41,7 @@ def normalize_text(text):
     if not text:
         return ""
 
-    text = text.lower()
+    text = str(text).lower()
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -62,32 +65,58 @@ def extract_query_units(query):
     """
     Extract meaningful search units from the query.
 
-    Natural query:
-    Turkish ideophones under negation
+    This function handles:
+    - quoted phrases
+    - known linguistic collocations
+    - ordinary keywords
+    - stopwords
+
+    Example:
+    Turkish bare nouns under negation
 
     becomes:
-    ["turkish", "ideophones", "negation"]
+    ["bare nouns", "turkish", "negation"]
 
-    Quoted phrases are also supported:
-    Turkish ideophones "under negation"
-
-    becomes:
-    ["under negation", "turkish", "ideophones"]
-
-    Stopwords such as "under", "in", "with", and "about" do not count
-    as keywords by themselves.
+    not:
+    ["turkish", "bare", "nouns", "negation"]
     """
     query = normalize_text(query)
 
+    units = []
+
+    # 1. Extract quoted phrases first.
     quoted_phrases = re.findall(r'"([^"]+)"', query)
 
-    cleaned_phrases = []
     for phrase in quoted_phrases:
         phrase = normalize_text(phrase)
         if phrase:
-            cleaned_phrases.append(phrase)
+            units.append(phrase)
 
+    # Remove quoted phrases before further processing.
     query_without_phrases = re.sub(r'"[^"]+"', " ", query)
+
+    # 2. Extract known linguistic collocations.
+    # Longer collocations first, so "negative polarity items"
+    # is captured before "polarity items".
+    sorted_collocations = sorted(
+        KNOWN_COLLOCATIONS,
+        key=len,
+        reverse=True
+    )
+
+    for collocation in sorted_collocations:
+        collocation = normalize_text(collocation)
+        pattern = r"\b" + re.escape(collocation) + r"\b"
+
+        if re.search(pattern, query_without_phrases):
+            units.append(collocation)
+            query_without_phrases = re.sub(
+                pattern,
+                " ",
+                query_without_phrases
+            )
+
+    # 3. Tokenize whatever remains.
     words = re.findall(r"\b\w+\b", query_without_phrases)
 
     keywords = [
@@ -95,9 +124,11 @@ def extract_query_units(query):
         if len(word) > 2 and word not in STOPWORDS
     ]
 
-    units = cleaned_phrases + keywords
+    units.extend(keywords)
 
+    # 4. Remove duplicates while preserving order.
     unique_units = []
+
     for unit in units:
         if unit not in unique_units:
             unique_units.append(unit)
@@ -146,22 +177,31 @@ def get_unit_variants(unit):
         variants.add(unit + "s")
 
     # Field noun/adjective pairs.
+    # pragmatics -> pragmatic
+    # semantics -> semantic
+    # phonetics -> phonetic
     if unit.endswith("ics") and len(unit) > 5:
         variants.add(unit[:-1])
 
+    # pragmatic -> pragmatics
+    # semantic -> semantics
+    # phonetic -> phonetics
     if unit.endswith("ic") and len(unit) > 4:
         variants.add(unit + "s")
 
-    # morphology -> morphological, phonology -> phonological, typology -> typological
+    # morphology -> morphological
+    # phonology -> phonological
+    # typology -> typological
     if unit.endswith("ology") and len(unit) > 6:
         variants.add(unit[:-1] + "ical")
 
     return variants
 
+
 def is_query_too_broad(query):
     """
     Reject broad one-word queries like 'syntax',
-    but allow more specific one-word queries like 'clitics' or 'adverbs'.
+    but allow more specific one-word queries like 'clitics' or 'ideophones'.
     """
     units = extract_query_units(query)
 
@@ -191,44 +231,69 @@ def get_work_text_fields(work):
 
     return title, abstract, concept_text
 
+
 def contains_any_term(text, terms):
     """Return True if any term from a set appears in text."""
     text = normalize_text(text)
 
     for term in terms:
         term = normalize_text(term)
-        if term in text:
+        if term and term in text:
             return True
 
     return False
 
 
+def build_linguistic_signal_terms():
+    """
+    Build a broad set of positive linguistics signals.
+
+    This includes:
+    - general domain terms
+    - specialized one-word terms
+    - known multi-word collocations
+    """
+    signal_terms = set()
+
+    signal_terms.update(LINGUISTIC_DOMAIN_TERMS)
+    signal_terms.update(SPECIALIZED_LINGUISTIC_TERMS)
+    signal_terms.update(KNOWN_COLLOCATIONS)
+
+    return signal_terms
+
+
 def is_linguistics_related(work, query_units):
     """
-    Return True if the work appears to belong to linguistics.
+    Barrier 1: decide whether the work belongs to linguistics.
 
-    This prevents cases where a query like 'morphology of stems'
-    returns biology papers about stem cells.
+    This is the first and most important constraint.
+
+    If the work has strong non-linguistic signals such as stem cells,
+    proteins, genes, clinical medicine, biology, etc., reject it immediately.
+
+    Only after passing this barrier can a work become a Golden Catch
+    or Nearby Find.
     """
     title, abstract, concept_text = get_work_text_fields(work)
     combined_text = f"{title} {abstract} {concept_text}"
 
-    has_linguistic_signal = contains_any_term(
-        combined_text,
-        LINGUISTIC_DOMAIN_TERMS
-    )
-
+    # Barrier 1a: reject clearly non-linguistic works immediately.
     has_non_linguistic_signal = contains_any_term(
         combined_text,
         NON_LINGUISTIC_EXCLUSION_TERMS
     )
 
-    # Strong biology/medicine signal with no clear linguistics signal:
-    # reject it.
-    if has_non_linguistic_signal and not has_linguistic_signal:
+    if has_non_linguistic_signal:
         return False
 
-    # If there is no linguistics signal at all, reject it.
+    # Barrier 1b: require a positive linguistics signal.
+    linguistic_signal_terms = build_linguistic_signal_terms()
+
+    has_linguistic_signal = contains_any_term(
+        combined_text,
+        linguistic_signal_terms
+    )
+
     if not has_linguistic_signal:
         return False
 
@@ -237,8 +302,15 @@ def is_linguistics_related(work, query_units):
 
 def unit_matches_text(unit, text):
     """Return True if a query unit or one of its variants appears in text."""
+    text = normalize_text(text)
     variants = get_unit_variants(unit)
-    return any(variant in text for variant in variants)
+
+    for variant in variants:
+        variant = normalize_text(variant)
+        if variant and variant in text:
+            return True
+
+    return False
 
 
 def count_unit_matches(text, query_units):
@@ -374,7 +446,12 @@ def search_openalex(query):
     - Golden Catch
     - Nearby Finds
 
-    Research Gap is shown only if both lists are empty.
+    Step-by-step constraints:
+    1. If the work is not linguistics, remove it immediately.
+    2. If it is linguistics, check abstract matches.
+    3. If abstract includes all query units, Golden Catch.
+    4. If abstract includes partial meaningful overlap, Nearby Find.
+    5. If both lists are empty, the app suggests a possible research gap.
     """
     url = "https://api.openalex.org/works"
 
@@ -397,6 +474,10 @@ def search_openalex(query):
     nearby_finds = []
 
     for work in works:
+        # Barrier 1: if it is not linguistics, never show it.
+        if not is_linguistics_related(work, query_units):
+            continue
+
         score = relevance_score(work, query_units)
         work["custom_relevance_score"] = score
 
@@ -556,12 +637,14 @@ def display_work(work, index):
 # -----------------------------
 
 query = st.text_input(
-    "What are you curious about?",
+    "What are you trying to find?",
     placeholder="e.g. Turkish ideophones under negation"
 )
 
 st.caption(
-    "You can type natural research phrases."
+    "You can type natural research phrases. "
+    "The app first removes non-linguistics results, then checks for close "
+    "and nearby matches."
 )
 
 
@@ -590,6 +673,13 @@ if st.button("Search") and query:
     # Search summary
     # -----------------------------
 
+    st.markdown("### Search units")
+    st.write(
+        "The app will look for these meaningful keywords or phrases. "
+        "Known linguistic collocations are treated as one unit. "
+        "Words like `under`, `in`, `with`, and `about` help shape the query "
+        "but do not count as keywords."
+    )
     st.code(", ".join(query_units))
 
     st.markdown("---")
@@ -651,7 +741,7 @@ if st.button("Search") and query:
     # OpenAlex search
     # -----------------------------
 
-    with st.spinner("Searching OpenAlex..."):
+    with st.spinner("Searching OpenAlex and removing non-linguistics results..."):
         try:
             golden_catches, nearby_finds = search_openalex(query)
         except Exception as error:
@@ -664,8 +754,8 @@ if st.button("Search") and query:
 
     if golden_catches:
         st.success(
-            "Golden Catch! I found works whose abstracts include all of your "
-            "meaningful keywords or phrases."
+            "Golden Catch! I found linguistics works whose abstracts include "
+            "all of your meaningful keywords or phrases."
         )
 
         st.markdown("### 🎣 Golden Catch")
@@ -676,14 +766,15 @@ if st.button("Search") and query:
     if nearby_finds:
         if golden_catches:
             st.info(
-                "Nearby Finds: these works are also related, but they may not include "
-                "all of your key concepts in the abstract."
+                "I also found Nearby Finds. These are linguistics works that are "
+                "related, but they may not include all of your key concepts in "
+                "the abstract."
             )
         else:
             st.info(
                 "I did not find a Golden Catch, but I found Nearby Finds. "
-                "These works are related, though they may not directly combine "
-                "all of your key concepts."
+                "These are linguistics works that are related, though they may "
+                "not directly combine all of your key concepts."
             )
 
         st.markdown("### Nearby Finds")
@@ -693,6 +784,7 @@ if st.button("Search") and query:
 
     if not golden_catches and not nearby_finds:
         st.warning(
-            "Hmm... I did not find matching works in OpenAlex. This could be a "
-            "research gap, or the relevant work may use different terminology."
+            "Hmm... I did not find matching linguistics works in OpenAlex. "
+            "This could be a research gap, or the relevant work may use "
+            "different terminology."
         )
