@@ -60,10 +60,6 @@ def reconstruct_abstract(inverted_index):
     words_sorted = sorted(words, key=lambda item: item[0])
     return " ".join(word for _, word in words_sorted)
 
-
-raw_query_units = extract_query_units(query)
-query_units = correct_query_units(raw_query_units)
-
 def build_vocabulary_for_typo_correction():
     """
     Build a vocabulary of known linguistic words and phrases that can be used
@@ -195,6 +191,8 @@ def correct_query_units(query_units):
 
     return unique_units
 
+raw_query_units = extract_query_units(query)
+query_units = correct_query_units(raw_query_units)
 
 def get_unit_variants(unit):
     """
