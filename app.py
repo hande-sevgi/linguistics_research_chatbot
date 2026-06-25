@@ -27,7 +27,7 @@ st.caption(
 # -----------------------------
 
 BROAD_SINGLE_TERMS = {
-    "syntax", "semantics", "phonology", "morphology", "pragmatics",
+    "syntax", "semantics", "phonology", "morphology",
     "linguistics", "language", "grammar", "discourse", "meaning",
     "words", "sentences", "speech", "communication", "acquisition",
     "variation", "typology"
@@ -38,7 +38,7 @@ STOPWORDS = {
     "with", "by", "from", "about", "into", "across", "under", "over",
     "between", "among", "through", "at", "as", "is", "are", "was",
     "were", "be", "been", "being", "this", "that", "these", "those",
-    "within", "without", "via", "toward", "towards"
+    "within", "without", "via", "toward", "towards", "their", "properties", "its", "her", "his"
 }
 
 
@@ -118,10 +118,86 @@ def extract_query_units(query):
     return unique_units
 
 
+def get_unit_variants(unit):
+    """
+    Return simple variants for a query unit.
+
+    This helps match:
+    pragmatics / pragmatic
+    semantics / semantic
+    ideophones / ideophone
+    clitics / clitic
+    negation / negative
+    morphology / morphological
+
+    This is intentionally simple, not a full linguistic stemmer.
+    """
+    unit = normalize_text(unit)
+    variants = {unit}
+
+    # Do not aggressively alter multi-word phrases.
+    # But still allow plural/singular variation on the final word.
+    if " " in unit:
+        words = unit.split()
+        last_word = words[-1]
+        last_variants = get_unit_variants(last_word)
+
+        for variant in last_variants:
+            phrase_variant = " ".join(words[:-1] + [variant])
+            variants.add(phrase_variant)
+
+        return variants
+
+    # Basic singular/plural matching.
+    if unit.endswith("s") and len(unit) > 4:
+        variants.add(unit[:-1])
+
+    if not unit.endswith("s") and len(unit) > 3:
+        variants.add(unit + "s")
+
+    # Field noun/adjective pairs.
+    # pragmatics -> pragmatic
+    # semantics -> semantic
+    # phonetics -> phonetic
+    if unit.endswith("ics") and len(unit) > 5:
+        variants.add(unit[:-1])
+
+    # pragmatic -> pragmatics
+    # semantic -> semantics
+    # phonetic -> phonetics
+    if unit.endswith("ic") and len(unit) > 4:
+        variants.add(unit + "s")
+
+    # morphology -> morphological
+    # phonology -> phonological
+    # typology -> typological
+    if unit.endswith("ology") and len(unit) > 6:
+        variants.add(unit[:-1] + "ical")
+
+    # morphological -> morphology
+    # phonological -> phonology
+    # typological -> typology
+    if unit.endswith("ological") and len(unit) > 10:
+        variants.add(unit[:-6])
+
+    # negation / negative
+    if unit == "negation":
+        variants.add("negative")
+
+    if unit == "negative":
+        variants.add("negation")
+
+    # language-specific examples.
+    if unit == "turkish":
+        variants.add("turkic")
+
+    return variants
+
+
 def is_query_too_broad(query):
     """
     Reject broad one-word queries like 'syntax',
-    but allow more specific one-word queries like 'clitics'.
+    but allow more specific one-word queries like 'clitics' or 'adverbs'.
     """
     units = extract_query_units(query)
 
@@ -152,27 +228,41 @@ def get_work_text_fields(work):
     return title, abstract, concept_text
 
 
+def unit_matches_text(unit, text):
+    """Return True if a query unit or one of its variants appears in text."""
+    variants = get_unit_variants(unit)
+    return any(variant in text for variant in variants)
+
+
 def count_unit_matches(text, query_units):
-    """Count how many query units appear in a text field."""
+    """Count how many query units or their variants appear in a text field."""
     count = 0
 
     for unit in query_units:
-        if unit in text:
+        if unit_matches_text(unit, text):
             count += 1
 
     return count
 
 
 def get_matched_units(text, query_units):
-    """Return the query units that appear in a text field."""
-    return [unit for unit in query_units if unit in text]
+    """Return the query units that appear in a text field, allowing variants."""
+    matched = []
+
+    for unit in query_units:
+        if unit_matches_text(unit, text):
+            matched.append(unit)
+
+    return matched
 
 
 def minimum_required_nearby_matches(query_units):
     """
     Nearby Finds require meaningful overlap.
 
-    For a niche one-word query like 'clitics', one abstract match is enough.
+    For a niche one-word query like 'clitics' or 'pragmatics',
+    one abstract match is enough.
+
     For multi-unit queries, at least two abstract matches are required.
     """
     if len(query_units) == 1:
@@ -185,14 +275,14 @@ def is_golden_catch(work, query_units):
     """
     A Golden Catch is a direct match.
 
-    The abstract must include all meaningful query units.
+    The abstract must include all meaningful query units, allowing simple variants.
 
     Example:
     Query: Turkish ideophones under negation
     Query units: turkish, ideophones, negation
 
     Golden Catch:
-    The abstract includes turkish, ideophones, and negation.
+    The abstract includes Turkish, ideophone/ideophones, and negation/negative.
     """
     _, abstract, _ = get_work_text_fields(work)
 
@@ -242,11 +332,11 @@ def relevance_score(work, query_units):
     score = 0
 
     for unit in query_units:
-        if unit in title:
+        if unit_matches_text(unit, title):
             score += 5
-        if unit in abstract:
+        if unit_matches_text(unit, abstract):
             score += 3
-        if unit in concept_text:
+        if unit_matches_text(unit, concept_text):
             score += 2
 
     title_matches = count_unit_matches(title, query_units)
@@ -277,8 +367,7 @@ def search_openalex(query):
     - Golden Catch
     - Nearby Finds
 
-    Research Gap is not decided here.
-    The app shows Research Gap only if both lists are empty.
+    Research Gap is shown only if both lists are empty.
     """
     url = "https://api.openalex.org/works"
 
@@ -465,10 +554,7 @@ query = st.text_input(
 )
 
 st.caption(
-    "You can type natural research phrases. For example, "
-    "`Turkish ideophones under negation` will be interpreted as "
-    "`Turkish`, `ideophones`, and `negation`. "
-    "Use quotation marks only when you want an exact phrase."
+    "You can type natural research phrases.
 )
 
 
@@ -497,12 +583,6 @@ if st.button("Search") and query:
     # Search summary
     # -----------------------------
 
-    st.markdown("### Search units")
-    st.write(
-        "The app will look for these meaningful keywords or phrases. "
-        "Words like `under`, `in`, `with`, and `about` help shape the query "
-        "but do not count as keywords."
-    )
     st.code(", ".join(query_units))
 
     st.markdown("---")
