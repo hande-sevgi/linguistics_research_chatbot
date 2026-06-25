@@ -8,8 +8,10 @@ from linguistics_terms import (
     BROAD_SINGLE_TERMS,
     STOPWORDS,
     SPECIALIZED_LINGUISTIC_TERMS,
-    PHRASE_TERMS,
+    KNOWN_COLLOCATIONS,
     TERM_VARIANTS,
+    LINGUISTIC_DOMAIN_TERMS
+    NON_LINGUISTIC_EXCLUSION_TERMS
 )
 
 # -----------------------------
@@ -189,6 +191,49 @@ def get_work_text_fields(work):
     concept_text = normalize_text(concept_text)
 
     return title, abstract, concept_text
+
+def contains_any_term(text, terms):
+    """Return True if any term from a set appears in text."""
+    text = normalize_text(text)
+
+    for term in terms:
+        term = normalize_text(term)
+        if term in text:
+            return True
+
+    return False
+
+
+def is_linguistics_related(work, query_units):
+    """
+    Return True if the work appears to belong to linguistics.
+
+    This prevents cases where a query like 'morphology of stems'
+    returns biology papers about stem cells.
+    """
+    title, abstract, concept_text = get_work_text_fields(work)
+    combined_text = f"{title} {abstract} {concept_text}"
+
+    has_linguistic_signal = contains_any_term(
+        combined_text,
+        LINGUISTIC_DOMAIN_TERMS
+    )
+
+    has_non_linguistic_signal = contains_any_term(
+        combined_text,
+        NON_LINGUISTIC_EXCLUSION_TERMS
+    )
+
+    # Strong biology/medicine signal with no clear linguistics signal:
+    # reject it.
+    if has_non_linguistic_signal and not has_linguistic_signal:
+        return False
+
+    # If there is no linguistics signal at all, reject it.
+    if not has_linguistic_signal:
+        return False
+
+    return True
 
 
 def unit_matches_text(unit, text):
