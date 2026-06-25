@@ -554,7 +554,7 @@ query = st.text_input(
 )
 
 st.caption(
-    "You can type natural research phrases.
+    "You can type natural research phrases."
 )
 
 
