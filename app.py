@@ -685,14 +685,12 @@ def display_work(work, index):
 # -----------------------------
 
 query = st.text_input(
-    "What are you trying to find?",
+    "What are you curious about?",
     placeholder="e.g. Turkish ideophones under negation"
 )
 
 st.caption(
-    "You can type natural research phrases. "
-    "The app first removes non-linguistics results, then checks for close "
-    "and nearby matches."
+    "You can type natural research phrases."
 )
 
 
@@ -716,21 +714,6 @@ if st.button("Search") and query:
         st.stop()
 
     st.markdown("## Results")
-
-    # -----------------------------
-    # Search summary
-    # -----------------------------
-
-    st.markdown("### Search units")
-    st.write(
-        "The app will look for these meaningful keywords or phrases. "
-        "Known linguistic collocations are treated as one unit. "
-        "Words like `under`, `in`, `with`, and `about` help shape the query "
-        "but do not count as keywords."
-    )
-    st.code(", ".join(query_units))
-
-    st.markdown("---")
 
     # -----------------------------
     # External source cards
