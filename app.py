@@ -228,6 +228,17 @@ def correct_query_units(query_units):
 
     return corrected_units
 
+def corrected_query_for_search(query):
+    """
+    Build a corrected search string for OpenAlex.
+
+    This makes typo correction affect the actual OpenAlex search,
+    not only the internal matching/classification.
+    """
+    raw_units = extract_query_units(query)
+    corrected_units = correct_query_units(raw_units)
+
+    return " ".join(corrected_units)
 
 # -----------------------------
 # Query helpers
@@ -557,7 +568,8 @@ def search_openalex(query):
     url = "https://api.openalex.org/works"
 
     # First narrow the search to linguistics.
-    linguistics_query = f"{query} linguistics"
+   corrected_query = corrected_query_for_search(query)
+linguistics_query = f"{corrected_query} linguistics"
 
     params = {
         "search": linguistics_query,
