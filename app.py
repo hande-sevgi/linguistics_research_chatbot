@@ -61,7 +61,67 @@ def reconstruct_abstract(inverted_index):
     return " ".join(word for _, word in words_sorted)
 
 
-def extract_query_units(query):
+raw_query_units = extract_query_units(query)
+query_units = correct_query_units(raw_query_units)
+
+def build_vocabulary_for_typo_correction():
+    """
+    Build a vocabulary of known linguistic words and phrases that can be used
+    for light typo correction.
+    """
+    vocabulary = set()
+
+    vocabulary.update(SPECIALIZED_LINGUISTIC_TERMS)
+    vocabulary.update(KNOWN_COLLOCATIONS)
+    vocabulary.update(LINGUISTIC_DOMAIN_TERMS)
+    vocabulary.update(TERM_VARIANTS.keys())
+
+    for variants in TERM_VARIANTS.values():
+        vocabulary.update(variants)
+
+    return vocabulary
+
+
+def correct_query_unit_typo(unit):
+    """
+    Correct likely typos in a query unit using the controlled vocabulary.
+
+    This is intentionally conservative: it only corrects when there is a close
+    match in the known linguistic vocabulary.
+    """
+    vocabulary = build_vocabulary_for_typo_correction()
+
+    unit = normalize_text(unit)
+
+    if unit in vocabulary:
+        return unit
+
+    matches = get_close_matches(
+        unit,
+        vocabulary,
+        n=1,
+        cutoff=0.86
+    )
+
+    if matches:
+        return matches[0]
+
+    return unit
+
+
+def correct_query_units(query_units):
+    """
+    Apply typo correction to all extracted query units.
+    """
+    corrected_units = []
+
+    for unit in query_units:
+        corrected_unit = correct_query_unit_typo(unit)
+
+        if corrected_unit not in corrected_units:
+            corrected_units.append(corrected_unit)
+
+    return corrected_units
     """
     Extract meaningful search units from the query.
 
