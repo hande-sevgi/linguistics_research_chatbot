@@ -331,62 +331,6 @@ def is_linguistics_related(work, query_units):
     title, abstract, concept_text = get_work_text_fields(work)
     combined_text = f"{title} {abstract} {concept_text}"
 
-    hard_exclusions.update({
-        "biology",
-        "biological",
-        "biomedical",
-        "medicine",
-        "medical",
-        "clinical",
-        "cell",
-        "cells",
-        "cellular",
-        "stem cell",
-        "stem cells",
-        "spermatogonial",
-        "proliferation",
-        "maturation",
-        "tissue",
-        "tissues",
-        "organ",
-        "organs",
-        "organelle",
-        "organelles",
-        "physiology",
-        "anatomy",
-        "anatomical",
-        "neural",
-        "neuron",
-        "neurons",
-        "protein",
-        "proteins",
-        "gene",
-        "genes",
-        "genetic",
-        "genome",
-        "cancer",
-        "tumor",
-        "tumour",
-        "molecular",
-        "living system",
-        "living systems",
-        "multicellular",
-        "bone",
-        "bones",
-        "blood vessel",
-        "blood vessels",
-        "tissue engineering",
-        "bioartificial",
-        "organism",
-        "organisms",
-        "biometric",
-        "imaging technique",
-        "imaging techniques",
-    })
-
-    if contains_any_term(combined_text, hard_exclusions):
-        return False
-
     # Strong linguistics signals.
     # These are safer than ambiguous words like morphology/stem/branch.
     strong_linguistics_terms = {
