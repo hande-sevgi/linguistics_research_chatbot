@@ -568,7 +568,7 @@ def search_openalex(query):
     url = "https://api.openalex.org/works"
 
     # First narrow the search to linguistics.
-   corrected_query = corrected_query_for_search(query)
+    corrected_query = corrected_query_for_search(query)
     linguistics_query = f"{corrected_query} linguistics"
 
     params = {
