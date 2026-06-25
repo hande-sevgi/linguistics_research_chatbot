@@ -700,7 +700,7 @@ with st.form("search_form"):
 # Main search
 # -----------------------------
 
-if st.button("Search") and query:
+if submitted and query:
     if is_query_too_broad(query):
         st.warning(
             "Please provide more specific information. For example, instead of "
