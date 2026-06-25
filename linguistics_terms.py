@@ -524,9 +524,6 @@ TERM_VARIANTS = {
 
     "typology": {"typological"},
     "typological": {"typology"},
-
-    "turkish": {"turkic"},
-    "turkic": {"turkish"},
 }
 
 LINGUISTIC_DOMAIN_TERMS = {
