@@ -11,7 +11,6 @@ from linguistics_terms import (
     KNOWN_COLLOCATIONS,
     TERM_VARIANTS,
     LINGUISTIC_DOMAIN_TERMS,
-    NON_LINGUISTIC_EXCLUSION_TERMS,
 )
 
 
@@ -511,44 +510,93 @@ def search_openalex(query):
 # External source helpers
 # -----------------------------
 
+# -----------------------------
+# External source helpers
+# -----------------------------
+
 def google_scholar_search_url(query):
-    """Create a Google Scholar search link for the user's query."""
-    return f"https://scholar.google.com/scholar?q={quote_plus(query)}"
+    """
+    Create a more constrained Google Scholar search link.
+
+    This does not filter Google Scholar results inside the app.
+    It only sends Google Scholar a smarter query by:
+    - preserving known collocations as quoted phrases
+    - adding a linguistics-domain cue
+    - excluding common non-linguistic domains such as biology and medicine
+    """
+    units = extract_query_units(query)
+
+    scholar_terms = []
+
+    for unit in units:
+        if " " in unit:
+            scholar_terms.append(f'"{unit}"')
+        else:
+            scholar_terms.append(unit)
+
+    # Add a domain cue so Scholar knows this is about linguistics.
+    scholar_terms.append("linguistics")
+
+    # These are query-level exclusions.
+    # They help reduce biology/medicine false positives like stem-cell morphology.
+    exclusions = [
+        "-biology",
+        "-medicine",
+        "-clinical",
+        "-biomedical",
+        '-"stem cell"',
+        '-"stem cells"',
+        "-spermatogonial",
+        "-protein",
+        "-gene",
+        "-genes",
+        "-genetic",
+        "-cancer",
+        "-tumor",
+        "-tumour",
+        "-neuron",
+        "-neurons",
+        "-cellular",
+        '-"cell proliferation"',
+        '-"cell differentiation"',
+    ]
+
+    scholar_query = " ".join(scholar_terms + exclusions)
+
+    return f"https://scholar.google.com/scholar?q={quote_plus(scholar_query)}"
 
 
 def simplified_lingbuzz_query(query):
     """
-    Create a shorter LingBuzz query using content words only.
+    Create a shorter LingBuzz query using linguistic search units.
 
-    LingBuzz can return noisy results with long phrase-like searches,
-    so this keeps only the first few content words.
+    LingBuzz can be noisy with long searches, so this:
+    - preserves known collocations as phrases
+    - removes stopwords through extract_query_units()
+    - keeps only the first few units
     """
     units = extract_query_units(query)
 
-    content_words = []
+    lingbuzz_terms = []
 
     for unit in units:
-        words = re.findall(r"\b\w+\b", unit.lower())
+        if " " in unit:
+            lingbuzz_terms.append(f'"{unit}"')
+        else:
+            lingbuzz_terms.append(unit)
 
-        for word in words:
-            if word not in STOPWORDS and len(word) > 2:
-                content_words.append(word)
-
-    unique_words = []
-
-    for word in content_words:
-        if word not in unique_words:
-            unique_words.append(word)
-
-    return " ".join(unique_words[:3])
+    # Keep only the first 4 units so the search does not become too brittle.
+    return " ".join(lingbuzz_terms[:4])
 
 
 def lingbuzz_search_url(query):
-    """Create a simplified LingBuzz search link."""
+    """
+    Create a simplified LingBuzz search link.
+
+    LingBuzz results are external and are not filtered inside the app.
+    """
     simple_query = simplified_lingbuzz_query(query)
     return f"https://lingbuzz.net/lingbuzz/search?q={quote_plus(simple_query)}"
-
-
 # -----------------------------
 # Display helpers
 # -----------------------------
