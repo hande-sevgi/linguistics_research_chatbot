@@ -331,9 +331,6 @@ def is_linguistics_related(work, query_units):
     title, abstract, concept_text = get_work_text_fields(work)
     combined_text = f"{title} {abstract} {concept_text}"
 
-    # Absolute exclusions.
-    hard_exclusions = set(NON_LINGUISTIC_EXCLUSION_TERMS)
-
     hard_exclusions.update({
         "biology",
         "biological",
