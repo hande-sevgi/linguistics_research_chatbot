@@ -434,16 +434,18 @@ def search_openalex(query):
     - Nearby Finds
 
     Step-by-step constraints:
-    1. If the work is not linguistics, remove it immediately.
-    2. If it is linguistics, check abstract matches.
-    3. If abstract includes all query units, Golden Catch.
-    4. If abstract includes partial meaningful overlap, Nearby Find.
-    5. If both lists are empty, the app suggests a possible research gap.
+    1. First narrow the OpenAlex search to linguistics.
+    2. Then remove anything that still does not look linguistic.
+    3. Then check abstract matches.
+    4. Classify as Golden Catch or Nearby Find.
     """
     url = "https://api.openalex.org/works"
 
+    # Add linguistics directly to the query so OpenAlex starts in the right domain.
+    linguistics_query = f"{query} linguistics"
+
     params = {
-        "search": query,
+        "search": linguistics_query,
         "per-page": 100,
         "sort": "relevance_score:desc",
         "mailto": "handesevgi@g.harvard.edu"
@@ -461,7 +463,7 @@ def search_openalex(query):
     nearby_finds = []
 
     for work in works:
-        # Barrier 1: if it is not linguistics, never show it.
+        # Hidden barrier: only linguistics works can pass.
         if not is_linguistics_related(work, query_units):
             continue
 
@@ -492,11 +494,6 @@ def search_openalex(query):
     )
 
     return golden_catches[:10], nearby_finds[:10]
-
-
-# -----------------------------
-# External source helpers
-# -----------------------------
 
 # -----------------------------
 # External source helpers
