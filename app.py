@@ -267,6 +267,140 @@ def is_linguistics_related(work, query_units):
 
     return True
 
+def is_linguistics_related(work, query_units):
+    """
+    Hidden first barrier: only linguistics works can pass.
+
+    Important:
+    Ambiguous words like morphology, stem, branch, structure, and development
+    do not count by themselves as evidence that a work is linguistics.
+    """
+    title, abstract, concept_text = get_work_text_fields(work)
+    combined_text = f"{title} {abstract} {concept_text}"
+
+    # Absolute biology / medicine / non-linguistics exclusions.
+    non_linguistic_terms = {
+        "biology",
+        "biological",
+        "biomedical",
+        "medicine",
+        "medical",
+        "clinical",
+        "cell",
+        "cells",
+        "cellular",
+        "stem cell",
+        "stem cells",
+        "spermatogonial",
+        "proliferation",
+        "maturation",
+        "tissue",
+        "tissues",
+        "organ",
+        "organs",
+        "organelle",
+        "organelles",
+        "physiology",
+        "anatomy",
+        "anatomical",
+        "neural",
+        "neuron",
+        "neurons",
+        "protein",
+        "proteins",
+        "gene",
+        "genes",
+        "genetic",
+        "genome",
+        "cancer",
+        "tumor",
+        "tumour",
+        "molecular",
+        "living systems",
+        "multicellular",
+        "bone",
+        "bones",
+        "blood vessels",
+        "tissue engineering",
+        "bioartificial",
+    }
+
+    if contains_any_term(combined_text, non_linguistic_terms):
+        return False
+
+    # Strong linguistics signals.
+    # These are safer than ambiguous words like morphology/stem/branch.
+    strong_linguistics_terms = {
+        "linguistics",
+        "linguistic",
+        "language",
+        "languages",
+        "grammar",
+        "grammatical",
+        "syntax",
+        "syntactic",
+        "semantics",
+        "semantic",
+        "pragmatics",
+        "pragmatic",
+        "phonology",
+        "phonological",
+        "phonetics",
+        "phonetic",
+        "morpheme",
+        "morphemes",
+        "affix",
+        "affixes",
+        "suffix",
+        "suffixes",
+        "prefix",
+        "prefixes",
+        "inflection",
+        "inflectional",
+        "derivation",
+        "derivational",
+        "case marking",
+        "agreement",
+        "tense",
+        "aspect",
+        "negation",
+        "polarity",
+        "clitic",
+        "clitics",
+        "ideophone",
+        "ideophones",
+        "discourse",
+        "speaker",
+        "speakers",
+        "utterance",
+        "typology",
+        "typological",
+        "turkish",
+        "turkic",
+        "english",
+        "german",
+        "japanese",
+        "korean",
+        "arabic",
+        "hebrew",
+        "spanish",
+        "french",
+        "italian",
+        "russian",
+        "mandarin",
+        "chinese",
+        "hausa",
+        "chadic",
+        "bantu",
+        "indo-european",
+        "trans-himalayan",
+    }
+
+    if not contains_any_term(combined_text, strong_linguistics_terms):
+        return False
+
+    return True
+    
 def build_linguistic_signal_terms():
     """
     Build a broad set of positive linguistics signals.
