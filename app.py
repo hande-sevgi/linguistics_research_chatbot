@@ -28,27 +28,6 @@ st.caption(
     "and possible research gaps."
 )
 
-
-# -----------------------------
-# Query settings
-# -----------------------------
-
-BROAD_SINGLE_TERMS = {
-    "syntax", "semantics", "phonology", "morphology",
-    "linguistics", "language", "grammar", "discourse", "meaning",
-    "words", "sentences", "speech", "communication", "acquisition",
-    "variation", "typology"
-}
-
-STOPWORDS = {
-    "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
-    "with", "by", "from", "about", "into", "across", "under", "over",
-    "between", "among", "through", "at", "as", "is", "are", "was",
-    "were", "be", "been", "being", "this", "that", "these", "those",
-    "within", "without", "via", "toward", "towards", "their", "properties", "its", "her", "his"
-}
-
-
 # -----------------------------
 # Text helpers
 # -----------------------------
@@ -132,18 +111,21 @@ def get_unit_variants(unit):
     This helps match:
     pragmatics / pragmatic
     semantics / semantic
-    ideophones / ideophone
+    ideophones / ideophone / ideophonic
     clitics / clitic
-    negation / negative
-    morphology / morphological
+    negation / negative / negated
 
     This is intentionally simple, not a full linguistic stemmer.
     """
     unit = normalize_text(unit)
     variants = {unit}
 
+    # Add hand-coded variants from linguistics_terms.py.
+    if unit in TERM_VARIANTS:
+        variants.update(TERM_VARIANTS[unit])
+
     # Do not aggressively alter multi-word phrases.
-    # But still allow plural/singular variation on the final word.
+    # But still allow variation on the final word.
     if " " in unit:
         words = unit.split()
         last_word = words[-1]
@@ -163,43 +145,17 @@ def get_unit_variants(unit):
         variants.add(unit + "s")
 
     # Field noun/adjective pairs.
-    # pragmatics -> pragmatic
-    # semantics -> semantic
-    # phonetics -> phonetic
     if unit.endswith("ics") and len(unit) > 5:
         variants.add(unit[:-1])
 
-    # pragmatic -> pragmatics
-    # semantic -> semantics
-    # phonetic -> phonetics
     if unit.endswith("ic") and len(unit) > 4:
         variants.add(unit + "s")
 
-    # morphology -> morphological
-    # phonology -> phonological
-    # typology -> typological
+    # morphology -> morphological, phonology -> phonological, typology -> typological
     if unit.endswith("ology") and len(unit) > 6:
         variants.add(unit[:-1] + "ical")
 
-    # morphological -> morphology
-    # phonological -> phonology
-    # typological -> typology
-    if unit.endswith("ological") and len(unit) > 10:
-        variants.add(unit[:-6])
-
-    # negation / negative
-    if unit == "negation":
-        variants.add("negative")
-
-    if unit == "negative":
-        variants.add("negation")
-
-    # language-specific examples.
-    if unit == "turkish":
-        variants.add("turkic")
-
     return variants
-
 
 def is_query_too_broad(query):
     """
