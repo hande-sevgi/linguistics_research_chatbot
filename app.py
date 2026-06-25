@@ -267,25 +267,13 @@ def is_linguistics_related(work, query_units):
 
     This is the first and most important constraint.
 
-    If the work has strong non-linguistic signals such as stem cells,
-    proteins, genes, clinical medicine, biology, etc., reject it immediately.
-
     Only after passing this barrier can a work become a Golden Catch
     or Nearby Find.
     """
     title, abstract, concept_text = get_work_text_fields(work)
     combined_text = f"{title} {abstract} {concept_text}"
 
-    # Barrier 1a: reject clearly non-linguistic works immediately.
-    has_non_linguistic_signal = contains_any_term(
-        combined_text,
-        NON_LINGUISTIC_EXCLUSION_TERMS
-    )
-
-    if has_non_linguistic_signal:
-        return False
-
-    # Barrier 1b: require a positive linguistics signal.
+    # Barrier 1: require a positive linguistics signal.
     linguistic_signal_terms = build_linguistic_signal_terms()
 
     has_linguistic_signal = contains_any_term(
