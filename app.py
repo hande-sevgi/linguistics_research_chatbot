@@ -11,7 +11,7 @@ from linguistics_terms import (
     KNOWN_COLLOCATIONS,
     TERM_VARIANTS,
     LINGUISTIC_DOMAIN_TERMS,
-    NON_LINGUISTIC_EXCLUSION_TERMS
+    NON_LINGUISTIC_EXCLUSION_TERMS,
 )
 
 # -----------------------------
