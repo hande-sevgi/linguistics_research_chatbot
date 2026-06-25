@@ -105,6 +105,15 @@ STOPWORDS = {
     "our",
     "your",
     "my",
+    "how does",
+    "how did",
+    "how do",
+    "what are",
+    "what is",
+    "what was",
+    "what were",
+    "where is",
+    "where are",
 }
 
 
