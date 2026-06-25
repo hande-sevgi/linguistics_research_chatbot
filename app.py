@@ -37,13 +37,24 @@ STOPWORDS = {
     "the", "and", "or", "of", "in", "on", "for", "to", "a", "an",
     "with", "by", "from", "about", "into", "across", "under", "over",
     "between", "among", "through", "at", "as", "is", "are", "was",
-    "were", "be", "been", "being", "this", "that", "these", "those"
+    "were", "be", "been", "being", "this", "that", "these", "those",
+    "within", "without", "via", "toward", "towards"
 }
 
 
 # -----------------------------
-# Helper functions
+# Text helpers
 # -----------------------------
+
+def normalize_text(text):
+    """Lowercase and normalize spacing."""
+    if not text:
+        return ""
+
+    text = text.lower()
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
 
 def reconstruct_abstract(inverted_index):
     """Reconstruct OpenAlex abstracts from inverted-index format."""
@@ -60,29 +71,24 @@ def reconstruct_abstract(inverted_index):
     return " ".join(word for _, word in words_sorted)
 
 
-def normalize_text(text):
-    """Lowercase and normalize spacing."""
-    text = text.lower()
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
 def extract_query_units(query):
     """
     Extract meaningful search units from the query.
 
-    Quoted phrases are kept as phrases:
-    "under negation" -> under negation
+    Natural query:
+    Turkish ideophones under negation
 
-    Remaining unquoted words are tokenized, with stopwords removed.
+    becomes:
+    ["turkish", "ideophones", "negation"]
 
-    Example:
+    Quoted phrases are also supported:
     Turkish ideophones "under negation"
 
     becomes:
     ["under negation", "turkish", "ideophones"]
 
-    The word "under" does not count separately as a keyword.
+    Stopwords such as "under", "in", "with", and "about" do not count
+    as keywords by themselves.
     """
     query = normalize_text(query)
 
@@ -125,6 +131,10 @@ def is_query_too_broad(query):
     return False
 
 
+# -----------------------------
+# OpenAlex work helpers
+# -----------------------------
+
 def get_work_text_fields(work):
     """Return normalized title, abstract, and OpenAlex concept text."""
     title = normalize_text(work.get("title") or "")
@@ -158,10 +168,12 @@ def get_matched_units(text, query_units):
     return [unit for unit in query_units if unit in text]
 
 
-def minimum_required_abstract_matches(query_units):
+def minimum_required_nearby_matches(query_units):
     """
-    For a niche one-word query like 'clitics', require one abstract match.
-    For multi-unit queries, require at least two abstract matches.
+    Nearby Finds require meaningful overlap.
+
+    For a niche one-word query like 'clitics', one abstract match is enough.
+    For multi-unit queries, at least two abstract matches are required.
     """
     if len(query_units) == 1:
         return 1
@@ -171,19 +183,16 @@ def minimum_required_abstract_matches(query_units):
 
 def is_golden_catch(work, query_units):
     """
-    A Golden Catch is a strong match.
+    A Golden Catch is a direct match.
 
     The abstract must include all meaningful query units.
 
-    Example query:
-    Turkish ideophones "under negation"
+    Example:
+    Query: Turkish ideophones under negation
+    Query units: turkish, ideophones, negation
 
-    A Golden Catch should include:
-    - Turkish
-    - ideophones
-    - under negation
-
-    in the abstract.
+    Golden Catch:
+    The abstract includes turkish, ideophones, and negation.
     """
     _, abstract, _ = get_work_text_fields(work)
 
@@ -197,18 +206,23 @@ def is_golden_catch(work, query_units):
 
 def is_nearby_find(work, query_units):
     """
-    A Nearby Find is related, but not a perfect match.
+    A Nearby Find is related, but not a full direct match.
 
-    The abstract must include:
+    The abstract must include some meaningful overlap:
     - one match for one-unit niche queries
     - at least two matches for multi-unit queries
+
+    Golden Catches are excluded from Nearby Finds.
     """
+    if is_golden_catch(work, query_units):
+        return False
+
     _, abstract, _ = get_work_text_fields(work)
 
     if not abstract:
         return False
 
-    required_matches = minimum_required_abstract_matches(query_units)
+    required_matches = minimum_required_nearby_matches(query_units)
     abstract_matches = count_unit_matches(abstract, query_units)
 
     return abstract_matches >= required_matches
@@ -263,8 +277,8 @@ def search_openalex(query):
     - Golden Catch
     - Nearby Finds
 
-    If no Golden Catch is found, the app suggests that this may be
-    a research gap or that different terminology may be needed.
+    Research Gap is not decided here.
+    The app shows Research Gap only if both lists are empty.
     """
     url = "https://api.openalex.org/works"
 
@@ -303,18 +317,22 @@ def search_openalex(query):
 
     golden_catches = sorted(
         golden_catches,
-        key=lambda work: work["custom_relevance_score"],
+        key=lambda item: item["custom_relevance_score"],
         reverse=True
     )
 
     nearby_finds = sorted(
         nearby_finds,
-        key=lambda work: work["custom_relevance_score"],
+        key=lambda item: item["custom_relevance_score"],
         reverse=True
     )
 
     return golden_catches[:10], nearby_finds[:10]
 
+
+# -----------------------------
+# External source helpers
+# -----------------------------
 
 def google_scholar_search_url(query):
     """Create a Google Scholar search link for the user's query."""
@@ -353,6 +371,10 @@ def lingbuzz_search_url(query):
     simple_query = simplified_lingbuzz_query(query)
     return f"https://lingbuzz.net/lingbuzz/search?q={quote_plus(simple_query)}"
 
+
+# -----------------------------
+# Display helpers
+# -----------------------------
 
 def get_author_text(work, max_authors=4):
     """Return a readable author string from OpenAlex authorships."""
@@ -439,12 +461,14 @@ def display_work(work, index):
 
 query = st.text_input(
     "What are you trying to find?",
-    placeholder='e.g. Turkish ideophones "under negation"'
+    placeholder="e.g. Turkish ideophones under negation"
 )
 
 st.caption(
-    'Tip: Put phrases in quotation marks, for example: '
-    '`Turkish ideophones "under negation"`'
+    "You can type natural research phrases. For example, "
+    "`Turkish ideophones under negation` will be interpreted as "
+    "`Turkish`, `ideophones`, and `negation`. "
+    "Use quotation marks only when you want an exact phrase."
 )
 
 
@@ -476,7 +500,8 @@ if st.button("Search") and query:
     st.markdown("### Search units")
     st.write(
         "The app will look for these meaningful keywords or phrases. "
-        "Stopwords like `under` do not count separately."
+        "Words like `under`, `in`, `with`, and `about` help shape the query "
+        "but do not count as keywords."
     )
     st.code(", ".join(query_units))
 
@@ -547,7 +572,7 @@ if st.button("Search") and query:
             st.stop()
 
     # -----------------------------
-    # Golden Catch results
+    # Results logic
     # -----------------------------
 
     if golden_catches:
@@ -561,29 +586,26 @@ if st.button("Search") and query:
         for index, work in enumerate(golden_catches, start=1):
             display_work(work, index)
 
-    else:
-        st.warning(
-            "Hmm... I did not find a Golden Catch. This could be a research gap, "
-            "or the relevant work may use different terminology."
-        )
-
-    # -----------------------------
-    # Nearby Finds results
-    # -----------------------------
-
     if nearby_finds:
-        st.info(
-            "Nearby Finds: these works are related, but they may not include "
-            "all of your key concepts in the abstract."
-        )
+        if golden_catches:
+            st.info(
+                "Nearby Finds: these works are also related, but they may not include "
+                "all of your key concepts in the abstract."
+            )
+        else:
+            st.info(
+                "I did not find a Golden Catch, but I found Nearby Finds. "
+                "These works are related, though they may not directly combine "
+                "all of your key concepts."
+            )
 
         st.markdown("### Nearby Finds")
 
         for index, work in enumerate(nearby_finds, start=1):
             display_work(work, index)
 
-    elif not golden_catches:
-        st.error(
-            "I did not find close or nearby matches in OpenAlex. Try broader terms, "
-            "singular/plural variants, or different terminology."
+    if not golden_catches and not nearby_finds:
+        st.warning(
+            "Hmm... I did not find matching works in OpenAlex. This could be a "
+            "research gap, or the relevant work may use different terminology."
         )
