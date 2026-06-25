@@ -587,6 +587,10 @@ LINGUISTIC_DOMAIN_TERMS = {
 
 NON_LINGUISTIC_EXCLUSION_TERMS = {
     "stem cell",
+    "stem",
+    "stems",
+    "anatomy",
+    "biology",
     "stem cells",
     "spermatogonial",
     "mesenchymal",
