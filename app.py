@@ -7,10 +7,7 @@ import streamlit as st
 from linguistics_terms import (
     BROAD_SINGLE_TERMS,
     STOPWORDS,
-    SPECIALIZED_LINGUISTIC_TERMS,
     KNOWN_COLLOCATIONS,
-    TERM_VARIANTS,
-    LINGUISTIC_DOMAIN_TERMS,
     NON_LINGUISTIC_EXCLUSION_TERMS,
 )
 
