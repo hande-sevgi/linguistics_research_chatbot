@@ -394,6 +394,7 @@ def is_linguistics_related(work, query_units):
         "bantu",
         "indo-european",
         "trans-himalayan",
+        "presupposition",
     }
 
     if not contains_any_term(combined_text, strong_linguistics_terms):
