@@ -867,9 +867,14 @@ if submitted and query:
     with st.spinner("Searching linguistics literature..."):
         try:
             golden_catches, nearby_finds = search_openalex(query)
-        except Exception as error:
-            st.error(f"OpenAlex search failed: {error}")
-            st.stop()
+    except RuntimeError as error:
+        st.warning(str(error))
+        st.stop()
+    except Exception:
+        st.error(
+            "OpenAlex search failed unexpectedly. Please try again in a moment."
+                )
+        st.stop()
 
     # -----------------------------
     # Results logic
