@@ -242,25 +242,6 @@ def contains_any_term(text, terms):
 
     return False
 
-
-def build_linguistic_signal_terms():
-    """
-    Build a broad set of positive linguistics signals.
-
-    This includes:
-    - general domain terms
-    - specialized one-word terms
-    - known multi-word collocations
-    """
-    signal_terms = set()
-
-    signal_terms.update(LINGUISTIC_DOMAIN_TERMS)
-    signal_terms.update(SPECIALIZED_LINGUISTIC_TERMS)
-    signal_terms.update(KNOWN_COLLOCATIONS)
-
-    return signal_terms
-
-
 def is_linguistics_related(work, query_units):
     """
     Barrier 1: decide whether the work belongs to linguistics.
@@ -286,6 +267,22 @@ def is_linguistics_related(work, query_units):
 
     return True
 
+def build_linguistic_signal_terms():
+    """
+    Build a broad set of positive linguistics signals.
+
+    This includes:
+    - general domain terms
+    - specialized one-word terms
+    - known multi-word collocations
+    """
+    signal_terms = set()
+
+    signal_terms.update(LINGUISTIC_DOMAIN_TERMS)
+    signal_terms.update(SPECIALIZED_LINGUISTIC_TERMS)
+    signal_terms.update(KNOWN_COLLOCATIONS)
+
+    return signal_terms
 
 def unit_matches_text(unit, text):
     """Return True if a query unit or one of its variants appears in text."""
