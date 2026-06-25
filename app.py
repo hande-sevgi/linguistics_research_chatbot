@@ -556,7 +556,7 @@ def display_work(work, index):
 # -----------------------------
 
 query = st.text_input(
-    "What are you trying to find?",
+    "What are you curious about?",
     placeholder="e.g. Turkish ideophones under negation"
 )
 
