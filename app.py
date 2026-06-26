@@ -48,7 +48,7 @@ def normalize_text(text):
 
 def term_in_text(term, text):
     """
-    Return True if term appears as a word/phrase in text.
+    Return True if term appears as a word or phrase in text.
 
     This avoids false matches like:
     cell matching excellent
@@ -98,7 +98,7 @@ def extract_query_units(query):
     """
     Extract meaningful search units from the query.
 
-    This function handles:
+    Handles:
     - quoted phrases
     - known linguistic collocations
     - ordinary keywords
@@ -109,9 +109,6 @@ def extract_query_units(query):
 
     becomes:
     ["bare nouns", "turkish", "negation"]
-
-    not:
-    ["turkish", "bare", "nouns", "negation"]
     """
     query = normalize_text(query)
 
@@ -129,8 +126,6 @@ def extract_query_units(query):
     query_without_phrases = re.sub(r'"[^"]+"', " ", query)
 
     # 2. Extract known linguistic collocations.
-    # Longer collocations first, so "negative polarity items"
-    # is captured before "polarity items".
     sorted_collocations = sorted(
         KNOWN_COLLOCATIONS,
         key=len,
@@ -175,8 +170,7 @@ def extract_query_units(query):
 
 def build_vocabulary_for_typo_correction():
     """
-    Build a vocabulary of known linguistic words and phrases that can be used
-    for light typo correction.
+    Build a vocabulary of known linguistic words and phrases.
     """
     vocabulary = set()
 
@@ -228,17 +222,19 @@ def correct_query_units(query_units):
 
     return corrected_units
 
+
 def corrected_query_for_search(query):
     """
-    Build a corrected search string for OpenAlex.
+    Build the corrected search string that will be sent to OpenAlex.
 
     This makes typo correction affect the actual OpenAlex search,
-    not only the internal matching/classification.
+    not only the internal result matching.
     """
     raw_units = extract_query_units(query)
     corrected_units = correct_query_units(raw_units)
 
     return " ".join(corrected_units)
+
 
 # -----------------------------
 # Query helpers
@@ -251,19 +247,16 @@ def get_unit_variants(unit):
     This helps match:
     pragmatics / pragmatic
     semantics / semantic
-    ideophones / ideophone / ideophonic
+    ideophones / ideophone
     clitics / clitic
     negation / negative / negated
     """
     unit = normalize_text(unit)
     variants = {unit}
 
-    # Add hand-coded variants from linguistics_terms.py.
     if unit in TERM_VARIANTS:
         variants.update(TERM_VARIANTS[unit])
 
-    # Do not aggressively alter multi-word phrases.
-    # But still allow variation on the final word.
     if " " in unit:
         words = unit.split()
         last_word = words[-1]
@@ -275,21 +268,18 @@ def get_unit_variants(unit):
 
         return variants
 
-    # Basic singular/plural matching.
     if unit.endswith("s") and len(unit) > 4:
         variants.add(unit[:-1])
 
     if not unit.endswith("s") and len(unit) > 3:
         variants.add(unit + "s")
 
-    # Field noun/adjective pairs.
     if unit.endswith("ics") and len(unit) > 5:
         variants.add(unit[:-1])
 
     if unit.endswith("ic") and len(unit) > 4:
         variants.add(unit + "s")
 
-    # morphology -> morphological, phonology -> phonological
     if unit.endswith("ology") and len(unit) > 6:
         variants.add(unit[:-1] + "ical")
 
@@ -335,15 +325,12 @@ def is_linguistics_related(work, query_units):
     """
     Hidden first barrier: only linguistics works can pass.
 
-    The app should never display biology/medicine/etc. results.
-    Ambiguous words like morphology, stem, branch, structure, and development
-    do not count by themselves as proof that a work is linguistics.
+    Biology, medicine, anatomy, genetics, and related papers are blocked before
+    Golden Catch or Nearby Finds classification.
     """
     title, abstract, concept_text = get_work_text_fields(work)
     combined_text = f"{title} {abstract} {concept_text}"
 
-    # Strong linguistics signals.
-    # These are safer than ambiguous words like morphology/stem/branch.
     strong_linguistics_terms = {
         "linguistics",
         "linguistic",
@@ -462,11 +449,6 @@ def get_matched_units(text, query_units):
 def minimum_required_nearby_matches(query_units):
     """
     Nearby Finds require meaningful overlap.
-
-    For a niche one-word query like 'clitics' or 'pragmatics',
-    one abstract match is enough.
-
-    For multi-unit queries, at least two abstract matches are required.
     """
     if len(query_units) == 1:
         return 1
@@ -476,9 +458,7 @@ def minimum_required_nearby_matches(query_units):
 
 def is_golden_catch(work, query_units):
     """
-    A Golden Catch is a direct match.
-
-    The abstract must include all meaningful query units.
+    Golden Catch: abstract includes all meaningful query units.
     """
     _, abstract, _ = get_work_text_fields(work)
 
@@ -492,9 +472,7 @@ def is_golden_catch(work, query_units):
 
 def is_nearby_find(work, query_units):
     """
-    A Nearby Find is related, but not a full direct match.
-
-    Golden Catches are excluded from Nearby Finds.
+    Nearby Find: linguistics work with meaningful partial overlap.
     """
     if is_golden_catch(work, query_units):
         return False
@@ -513,11 +491,6 @@ def is_nearby_find(work, query_units):
 def relevance_score(work, query_units):
     """
     Score how central the user's keywords or phrases are to the work.
-
-    Title matches matter most.
-    Abstract matches matter next.
-    OpenAlex concept matches also help.
-    Citation count is only a small bonus.
     """
     title, abstract, concept_text = get_work_text_fields(work)
 
@@ -553,36 +526,57 @@ def relevance_score(work, query_units):
     return score
 
 
+# -----------------------------
+# OpenAlex request with caching
+# -----------------------------
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_openalex_works(search_query):
+    """
+    Fetch OpenAlex works with caching.
+
+    ttl=3600 means the same search query is cached for 1 hour,
+    so repeated searches do not keep hitting OpenAlex.
+    """
+    url = "https://api.openalex.org/works"
+
+    params = {
+        "search": search_query,
+        "per-page": 50,
+        "sort": "relevance_score:desc",
+        "mailto": "handesevgi@g.harvard.edu"
+    }
+
+    response = requests.get(url, params=params, timeout=20)
+
+    if response.status_code == 429:
+        raise RuntimeError(
+            "OpenAlex is rate-limiting the app right now. "
+            "Please wait a minute and try again."
+        )
+
+    response.raise_for_status()
+
+    data = response.json()
+    return data.get("results", [])
+
+
 def search_openalex(query):
     """
     Search OpenAlex and classify works into:
     - Golden Catch
     - Nearby Finds
 
-    Step-by-step constraints:
-    1. First narrow the OpenAlex search to linguistics.
-    2. Then remove anything that still does not look linguistic.
-    3. Then check abstract matches.
-    4. Classify as Golden Catch or Nearby Find.
+    Step-by-step:
+    1. Correct typos.
+    2. Send corrected query + linguistics to OpenAlex.
+    3. Keep only linguistics works.
+    4. Classify into Golden Catch or Nearby Finds.
     """
-    url = "https://api.openalex.org/works"
-
-    # First narrow the search to linguistics.
     corrected_query = corrected_query_for_search(query)
     linguistics_query = f"{corrected_query} linguistics"
 
-    params = {
-        "search": linguistics_query,
-        "per-page": 100,
-        "sort": "relevance_score:desc",
-        "mailto": "handesevgi@g.harvard.edu"
-    }
-
-    response = requests.get(url, params=params, timeout=20)
-    response.raise_for_status()
-
-    data = response.json()
-    works = data.get("results", [])
+    works = fetch_openalex_works(linguistics_query)
 
     raw_query_units = extract_query_units(query)
     query_units = correct_query_units(raw_query_units)
@@ -591,7 +585,6 @@ def search_openalex(query):
     nearby_finds = []
 
     for work in works:
-        # Hidden first barrier: only linguistics works can pass.
         if not is_linguistics_related(work, query_units):
             continue
 
@@ -606,6 +599,7 @@ def search_openalex(query):
 
         if is_golden_catch(work, query_units):
             golden_catches.append(work)
+
         elif is_nearby_find(work, query_units):
             nearby_finds.append(work)
 
@@ -630,7 +624,7 @@ def search_openalex(query):
 
 def google_scholar_search_url(query):
     """
-    Create a more constrained Google Scholar search link.
+    Create a constrained Google Scholar search link.
 
     This does not filter Google Scholar results inside the app.
     It only sends Google Scholar a smarter query.
@@ -682,7 +676,7 @@ def google_scholar_search_url(query):
 
 def simplified_lingbuzz_query(query):
     """
-    Create a shorter LingBuzz query using linguistic search units.
+    Create a shorter LingBuzz query using corrected linguistic search units.
     """
     raw_units = extract_query_units(query)
     units = correct_query_units(raw_units)
@@ -867,14 +861,16 @@ if submitted and query:
     with st.spinner("Searching linguistics literature..."):
         try:
             golden_catches, nearby_finds = search_openalex(query)
-    except RuntimeError as error:
-        st.warning(str(error))
-        st.stop()
-    except Exception:
-        st.error(
-            "OpenAlex search failed unexpectedly. Please try again in a moment."
-                )
-        st.stop()
+
+        except RuntimeError as error:
+            st.warning(str(error))
+            st.stop()
+
+        except Exception:
+            st.error(
+                "OpenAlex search failed unexpectedly. Please try again in a moment."
+            )
+            st.stop()
 
     # -----------------------------
     # Results logic
