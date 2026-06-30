@@ -1,5 +1,3 @@
-pip install nltk
-
 import re
 from difflib import get_close_matches
 from urllib.parse import quote_plus
