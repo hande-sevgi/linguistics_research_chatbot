@@ -3,7 +3,6 @@ from difflib import get_close_matches
 from urllib.parse import quote_plus
 import requests
 import streamlit as st
-nltk.download('stopwords')
 
 from linguistics_terms import (
     BROAD_SINGLE_TERMS,
