@@ -30,10 +30,6 @@ st.caption(
     "and possible research gaps."
 )
 
-if response.status_code == 429:
-    raise RuntimeError(
-        "OpenAlex is rate-limiting the app right now. Please wait a minute and try again."
-    )
 # -----------------------------
 # Text helpers
 # -----------------------------
@@ -533,20 +529,25 @@ def relevance_score(work, query_units):
 # -----------------------------
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_openalex_works(search_query):
-    """
-    Fetch OpenAlex works with caching.
+def fetch_openalex_works(params):
+    response = requests.get(
+        "https://api.openalex.org/works",
+        params=params,
+        timeout=20
+    )
 
-    ttl=3600 means the same search query is cached for 1 hour,
-    so repeated searches do not keep hitting OpenAlex.
-    """
-    url = "https://api.openalex.org/works"
+    if response.status_code == 429:
+        raise RuntimeError(
+            "OpenAlex is rate-limiting the app right now. Please wait a minute and try again."
+        )
+
+    response.raise_for_status()
+    return response.json()
 
     params = {
         "search": search_query,
-        "per-page": 50,
-        "sort": "relevance_score:desc",
-        "mailto": "handesevgi@g.harvard.edu"
+        "per-page": 100,
+        "sort": "relevance_score:desc"
     }
 
     response = requests.get(url, params=params, timeout=20)
