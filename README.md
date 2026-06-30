@@ -1,8 +1,12 @@
 Reasoning steps to consider:
 
-  Big picture <br>
-  Focus <br>
-  Retrieval<br>
-  Listing<br>
+  Big picture
+  
+  Focus
+  
+  Retrieval
+  
+  Listing
+
 
 AI agents at work.
