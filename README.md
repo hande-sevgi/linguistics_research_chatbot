@@ -1,1 +1,6 @@
-Work in progress!
+Reasoning steps to consider:
+
+  Big picture
+  Focus
+  Retrieval
+  Listing
