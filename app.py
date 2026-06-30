@@ -30,7 +30,10 @@ st.caption(
     "and possible research gaps."
 )
 
-
+if response.status_code == 429:
+    raise RuntimeError(
+        "OpenAlex is rate-limiting the app right now. Please wait a minute and try again."
+    )
 # -----------------------------
 # Text helpers
 # -----------------------------
